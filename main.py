@@ -1,7 +1,8 @@
 import messenger
 from logger import logger
-from parse_archive import parse_archive
 from analytics import build_analytics
+from user_options import read_options
+from dataset import get_dataset
 
 # EXPERIMENTAL Saves parsed data into a database
 def migrate_to_db():
@@ -26,14 +27,13 @@ def timeline():
 # Shows global analytics, like the total number of interactions
 def global_statistics():
     ...
-
-path = messenger.request_archive_path()
-deltas = parse_archive(path)
-for delta in deltas:
-    if delta.user == "@golybchuk":
-        logger.info(f"{delta.timestamp}: {delta.delta}")
         
-analytics = build_analytics(deltas)
+read_options()
+dataset = get_dataset()
+if len(dataset.unknown_users) > 0:
+    messenger.notify_unknown_users(dataset.unknown_users)
+
+analytics = build_analytics(dataset)
 
 for user in analytics.get_users():
     length = analytics.get_user_length(user)

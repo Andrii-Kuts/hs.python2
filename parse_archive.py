@@ -1,5 +1,5 @@
 from logger import logger
-from classes import DeltaInstance
+from classes import DeltaInstance, Dataset
 from pathlib import Path
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -14,22 +14,19 @@ def __parse_usernames(archive_path: Path) -> dict[str, str]:
     file_path = archive_path / "nicknames.txt"
     if not file_path.exists():
         logger.error("Nicknames file doesn't exist")
+        return {}
     if not file_path.is_file():
         logger.error("Nicknames file is not a file")
+        return {}
     logger.info(f"Parsing nicknames file {file_path.name}")
-    try:
-        with open(file_path, 'r') as file:
-            content = file.read()
-            lines = content.splitlines()
-            result = {}
-            for line in lines:
-                handle, user = line.split()
-                result[handle] = user
-            return result
-
-    except Exception as e:
-        logger.error(f"Exception while parsing nicknames file {file_path.name}", exc_info=True)
-        return []
+    with open(file_path, 'r') as file:
+        content = file.read()
+        lines = content.splitlines()
+        result = {}
+        for line in lines:
+            handle, user = line.split()
+            result[handle] = user
+        return result
     
 def __parse_message_id(message: str) -> int:
     id_search = re.search(r'id="message(.*?)"', message, flags=re.DOTALL)
@@ -66,7 +63,7 @@ def __parse_message_meta(message: str) -> MessageMeta:
     from_user = __parse_from_user(message)
     return MessageMeta(from_user, id)
 
-def __parse_user(message: str, usernames: dict[str, str]) -> str:
+def __parse_user(message: str, usernames: dict[str, str], unknown_users: set[str]) -> str:
     user = None
     text_match = re.search(r'<div class="text">([.\s\S]*?)<\/div>', message, flags=re.DOTALL)
     if not text_match:
@@ -79,13 +76,14 @@ def __parse_user(message: str, usernames: dict[str, str]) -> str:
         user = usernames.get(nickname)
         if user is None:
             logger.warning(f"Unknown user: {nickname}")
+            unknown_users.add(nickname)
     # No handle, user name might be provided directly
     else:
         name_match = re.search(r'<div class="text">\s*([^<>,]+),\s*твій песюн', message)
         user = name_match.group(1).strip() if name_match else None
     return user
 
-def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernames: dict[str, str]) -> DeltaInstance:
+def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernames: dict[str, str], unknown_users: set[str]) -> DeltaInstance:
     id = __parse_message_id(message)
     joined = re.search(r'message default clearfix joined', message)
     from_user = None
@@ -109,32 +107,27 @@ def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernam
     length_change = __parse_length_change(message)
     if length_change is None:
         return None
-    user = __parse_user(message, usernames)
+    user = __parse_user(message, usernames, unknown_users)
     if user is None:
         return None
     return DeltaInstance(user, timestamp, length_change)
 
-def __parse_html(file_path: Path, usernames: dict[str, str]) -> list[DeltaInstance]:
+def __parse_html(file_path: Path, usernames: dict[str, str], unknown_users: set[str]) -> list[DeltaInstance]:
     logger.info(f"Parsing file {file_path.name}")
-    try:
-        with open(file_path, 'r') as file:
-            content = file.read()
-            soup = BeautifulSoup(content, "html.parser")
-            regular_blocks = list(map(lambda block : block.prettify(), soup.find_all("div", class_="message default clearfix")))
-            joined_blocks = list(map(lambda block : block.prettify(), soup.find_all("div", class_="message default clearfix joined")))
-            blocks = regular_blocks + joined_blocks
-            messages_meta_list = list(map(__parse_message_meta, blocks))
-            messages_meta = {meta.id: meta for meta in messages_meta_list}
-            parsed_messages = list(map(lambda body_block : __parse_message(body_block, messages_meta, usernames), blocks))
-            result = list(filter(lambda delta : delta is not None, parsed_messages))
-            logger.info(f"Successfully parsed {len(result)} blocks")
-            return result
+    with open(file_path, 'r') as file:
+        content = file.read()
+        soup = BeautifulSoup(content, "html.parser")
+        regular_blocks = list(map(lambda block : block.prettify(), soup.find_all("div", class_="message default clearfix")))
+        joined_blocks = list(map(lambda block : block.prettify(), soup.find_all("div", class_="message default clearfix joined")))
+        blocks = regular_blocks + joined_blocks
+        messages_meta_list = list(map(__parse_message_meta, blocks))
+        messages_meta = {meta.id: meta for meta in messages_meta_list}
+        parsed_messages = list(map(lambda body_block : __parse_message(body_block, messages_meta, usernames, unknown_users), blocks))
+        result = list(filter(lambda delta : delta is not None, parsed_messages))
+        logger.info(f"Successfully parsed {len(result)} blocks")
+        return result
 
-    except Exception as e:
-        logger.error(f"Exception while parsing file {file_path.name}", exc_info=True)
-        return []
-
-def parse_archive(path) -> list[DeltaInstance]:
+def parse_archive(path) -> Dataset:
     file = Path(path)
 
     if not file.exists():
@@ -147,7 +140,8 @@ def parse_archive(path) -> list[DeltaInstance]:
     message_files = list(file.glob("messages*.html"))
 
     logger.info(f"Found {len(message_files)} files")
-    result = []
+    deltas = []
+    unknown_users = set()
     for html_file in message_files:
-        result.extend(__parse_html(html_file, usernames))
-    return result
+        deltas.extend(__parse_html(html_file, usernames, unknown_users))
+    return Dataset(deltas, unknown_users)

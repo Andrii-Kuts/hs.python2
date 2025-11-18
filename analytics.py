@@ -1,8 +1,9 @@
-from classes import DeltaInstance
+from classes import DeltaInstance, Dataset
 from logger import logger
 
 class Analytics:
-    def __init__(self, deltas: list[DeltaInstance]):
+    def __init__(self, dataset: Dataset):
+        deltas = dataset.deltas
         logger.info(f"Starting building analytics from {len(deltas)} deltas")
         self.users = set()
         self.user_lengths = {}
@@ -18,5 +19,5 @@ class Analytics:
     def get_user_length(self, user: str) -> int:
         return self.user_lengths.get(user, 0)
     
-def build_analytics(deltas: list[DeltaInstance]) -> Analytics:
-    return Analytics(deltas)
+def build_analytics(dataset: Dataset) -> Analytics:
+    return Analytics(dataset)

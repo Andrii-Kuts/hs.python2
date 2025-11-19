@@ -1,6 +1,7 @@
 from classes import DeltaInstance, Dataset
 from logger import logger
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+import pytz
 
 class Analytics:
 
@@ -95,6 +96,15 @@ class Analytics:
     
     def get_user_events_count(self, user: str) -> int:
         return len(self.user_deltas.get(user))
+    
+    def get_user_average_interval(self, user: str) -> timedelta:
+        deltas = self.get_user_deltas(user)
+        duration = deltas[-1][0] - deltas[0][0]
+        count = len(deltas)-1
+        if count <= 0:
+            return duration
+        return duration / count
+        
 
     def get_user_deltas(self, user: str) -> list[tuple[datetime, int]]:
         return self.user_deltas.get(user)

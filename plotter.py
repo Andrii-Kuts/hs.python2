@@ -85,28 +85,28 @@ def user_statstics(analytics: Analytics):
                     html.Div(id="user_best_rank", className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
-                style={"flex": "1", "color": "red"},
+                style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Events Count", className="numeric-statistic-title"),
                     html.Div(id="user_events", className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
-                style={"flex": "1"},
+                style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Avg. Interval", className="numeric-statistic-title"),
                     html.Div(id="user_average_interval", className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
-                style={"flex": "1"},
+                style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Longest Streak", className="numeric-statistic-title"),
                     html.Div(id="user_longest_streak", className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
-                style={"flex": "1"},
+                style={"flex": "1", "color": "DeepSkyBlue"},
             ),
         ], style={
             "display": "flex",
@@ -121,7 +121,7 @@ def user_statstics(analytics: Analytics):
         return html.Div([
             html.Div(
                 dcc.Graph(id="user_events_day"),
-                style={"flex": "1", "color": "red"},
+                style={"flex": "1"},
             ),
             html.Div(
                 dcc.Graph(id="user_events_time"),
@@ -186,7 +186,9 @@ def init(analytics: Analytics):
     def update_user_numerics(user: str):
         best_rank = analytics.get_user_best_rank(user)
         events_count = analytics.get_user_events_count(user)
-        return f"#{best_rank}", events_count, "5 days", "3 days"
+        average_interval = analytics.get_user_average_interval(user)
+        interval_days = round(average_interval.total_seconds() / (60 * 60 * 24), 2)
+        return f"#{best_rank}", events_count, f"{interval_days} days", "3 days"
     
     @app.callback(
         Output("user_events_day", "figure"),
@@ -213,9 +215,10 @@ def init(analytics: Analytics):
             x="Day",
             category_orders={"Day": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]},
             title=f"Events by Day",
+            color_discrete_sequence=["DeepSkyBlue"],
         )
-        fig_time = px.histogram(df_time, x="Time", title=f"Events by Time")
-        fig_delta = px.histogram(df_delta, x="Delta", title=f"Events by Delta")
+        fig_time = px.histogram(df_time, x="Time", title=f"Events by Time", color_discrete_sequence=["DeepSkyBlue"])
+        fig_delta = px.histogram(df_delta, x="Delta", title=f"Events by Delta", color_discrete_sequence=["DeepSkyBlue"])
         return fig_day, fig_time, fig_delta
     
     app.run(host="0.0.0.0", port=8050, debug=False)

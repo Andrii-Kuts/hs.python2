@@ -1,6 +1,6 @@
 from classes import DeltaInstance, Dataset
 from logger import logger
-from datetime import datetime
+from datetime import datetime, timezone
 
 class Analytics:
 
@@ -23,14 +23,59 @@ class Analytics:
             if user not in self.user_length_histories:
                 self.user_length_histories[user] = []
             self.user_length_histories[user].append((delta.timestamp,cur_length))
-
         logger.info(f"[Analytics] User length histories are done!")
+
+    def __calculate_user_deltas(self, dataset: Dataset):
+        logger.info(f"[Analytics] Starting to calculate user deltas")
+        self.user_deltas: dict[str, list[tuple[datetime, int]]] = {}
+        for delta in dataset.deltas:
+            user = delta.user
+            if user not in self.user_deltas:
+                self.user_deltas[user] = []
+            self.user_deltas[user].append((delta.timestamp, delta.delta))
+        logger.info(f"[Analytics] User deltas are done!")
+
+    def __calculate_best_players_history(self, dataset: Dataset):
+        logger.info(f"[Analytics] Starting to calculate best players history")
+        self.best_players_history: list[tuple[str, datetime, datetime]] = []
+        self.best_rank: dict[str, int] = {}
+        user_lengths = {}
+        cur_best: str = None
+        cur_start: datetime = None
+        for delta in dataset.deltas:
+            user = delta.user
+            cur_length = user_lengths.get(user, 0) + delta.delta
+            user_lengths[user] = cur_length
+
+            # update best
+            best = max(user_lengths, key=user_lengths.get)
+            if best != cur_best:
+                cur_time = delta.timestamp
+                if cur_best is not None:
+                    self.best_players_history.append((cur_best, cur_start, cur_time))
+                cur_best = best
+                cur_start = cur_time
+
+            # update best ranks
+            for i, (user, length) in enumerate(
+                sorted(user_lengths.items(), key=lambda kv: kv[1], reverse=True)
+            ):
+                rank = i+1
+                cur_rank = self.best_rank.get(user)
+                if cur_rank is None or rank < cur_rank:
+                    self.best_rank[user] = rank
+                
+        if cur_best is not None:
+            self.best_players_history.append((cur_best, cur_start, datetime.now(timezone.utc)))
+        logger.info(f"[Analytics] Best players history is done!")
 
     def __init__(self, dataset: Dataset):
         deltas = dataset.deltas
         logger.info(f"[Analytics] Starting building analytics from {len(deltas)} deltas")
         self.__list_users(dataset)
         self.__calculate_user_length_histories(dataset)
+        self.__calculate_user_deltas(dataset)
+        self.__calculate_best_players_history(dataset)
         logger.info(f"[Analytics] Done buildng all analytics")
 
     def get_users(self) -> set[str]:
@@ -44,6 +89,18 @@ class Analytics:
     
     def get_user_length_history(self, user: str) -> list[tuple[datetime, int]]:
         return self.user_length_histories[user]
+    
+    def get_user_best_rank(self, user: str) -> int:
+        return self.best_rank[user]
+    
+    def get_user_events_count(self, user: str) -> int:
+        return len(self.user_deltas.get(user))
+
+    def get_user_deltas(self, user: str) -> list[tuple[datetime, int]]:
+        return self.user_deltas.get(user)
+    
+    def get_best_players_history(self):
+        return self.best_players_history
     
 def build_analytics(dataset: Dataset) -> Analytics:
     return Analytics(dataset)

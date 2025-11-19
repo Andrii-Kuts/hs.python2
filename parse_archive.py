@@ -140,8 +140,9 @@ def parse_archive(path) -> Dataset:
     message_files = list(file.glob("messages*.html"))
 
     logger.info(f"Found {len(message_files)} files")
-    deltas = []
+    deltas: list[DeltaInstance] = []
     unknown_users = set()
     for html_file in message_files:
         deltas.extend(__parse_html(html_file, usernames, unknown_users))
+    deltas.sort(key=lambda delta: delta.timestamp)
     return Dataset(deltas, unknown_users)

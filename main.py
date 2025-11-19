@@ -29,16 +29,16 @@ def timeline():
 def global_statistics():
     ...
 
-read_options()
-dataset = get_dataset()
-if len(dataset.unknown_users) > 0:
-    messenger.notify_unknown_users(dataset.unknown_users)
+def main():
+    messenger.notify_app_started()
+    read_options()
+    dataset = get_dataset()
+    if len(dataset.unknown_users) > 0:
+        messenger.notify_unknown_users(dataset.unknown_users)
 
-analytics = build_analytics(dataset)
+    analytics = build_analytics(dataset)
+    plotter.init(analytics)
 
-plotter.init(analytics)
-
-# for user in analytics.get_users():
-#     length = analytics.get_user_length(user)
-#     print(f"User: {user}, Length: {length}")
+if __name__ == "__main__":
+    main()
     

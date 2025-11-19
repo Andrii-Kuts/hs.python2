@@ -131,4 +131,4 @@ def init(analytics: Analytics):
         })
         fig = px.line(df, x="Date", y="Length", title=f"{user}'s Length History")
         return fig, "#3", "100", "5 days", "3 days"
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=8050, debug=False)

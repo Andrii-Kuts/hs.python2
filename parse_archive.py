@@ -56,6 +56,12 @@ def __parse_length_change(message: str) -> int:
     length_change = int(grow.group(1)) if grow else (-int(shrink.group(1)) if shrink else None)
     return length_change
 
+def __parse_wait_minutes(message: str) -> int:
+    wait_search = re.search(r'Продовжуй грати через (\d+) год., (\d+) хв.', message)
+    hour = wait_search.group(1)
+    minute = wait_search.group(2)
+    return int(hour) * 60 + int(minute)
+
 def __parse_message_meta(message: str) -> MessageMeta:
     id = __parse_message_id(message)
     if id is None:
@@ -110,7 +116,8 @@ def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernam
     user = __parse_user(message, usernames, unknown_users)
     if user is None:
         return None
-    return DeltaInstance(user, timestamp, length_change)
+    wait_minutes = __parse_wait_minutes(message)
+    return DeltaInstance(user, timestamp, length_change, wait_minutes)
 
 def __parse_html(file_path: Path, usernames: dict[str, str], unknown_users: set[str]) -> list[DeltaInstance]:
     logger.info(f"Parsing file {file_path.name}")

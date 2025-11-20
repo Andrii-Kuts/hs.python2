@@ -188,7 +188,8 @@ def init(analytics: Analytics):
         events_count = analytics.get_user_events_count(user)
         average_interval = analytics.get_user_average_interval(user)
         interval_days = round(average_interval.total_seconds() / (60 * 60 * 24), 2)
-        return f"#{best_rank}", events_count, f"{interval_days} days", "3 days"
+        best_streak = analytics.get_user_best_streak(user)
+        return f"#{best_rank}", events_count, f"{interval_days} days", f"{best_streak} day(s)"
     
     @app.callback(
         Output("user_events_day", "figure"),

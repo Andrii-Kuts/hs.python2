@@ -160,6 +160,12 @@ class Analytics:
     def get_user_deltas(self, user: str) -> list[tuple[datetime, int]]:
         return self.user_deltas.get(user)
     
+    def get_all_deltas(self) -> list[tuple[str, datetime, int]]:
+        result = []
+        for user,deltas in self.user_deltas.items():
+            result.extend(map(lambda delta: (user,) + delta, deltas))
+        return result
+    
     def get_best_players_history(self):
         return self.best_players_history
     
@@ -171,7 +177,15 @@ class Analytics:
         deadline = next_pesun_date(streak[1])
         now = datetime.now(timezone.utc)
         return streak[2] if now <= deadline else 0
-
+    
+    def get_user_domination_durations(self) -> dict[str, timedelta]:
+        durations = {}
+        for entry in self.best_players_history:
+            user = entry[0]
+            duration = entry[2]-entry[1]
+            total_duration = durations.get(user, timedelta()) + duration
+            durations[user] = total_duration
+        return durations
     
 def build_analytics(dataset: Dataset) -> Analytics:
     return Analytics(dataset)

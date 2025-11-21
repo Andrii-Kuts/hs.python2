@@ -53,3 +53,20 @@ def format_plural(val: int, name: str):
 
 def format_date(date: datetime) -> str:
     return date.strftime("%d.%m.%Y")
+
+def format_duration(duration: timedelta):
+    days = duration.days
+    seconds = duration.seconds
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    parts = []
+    if days:
+        parts.append(f"{days} days")
+    if hours:
+        parts.append(f"{hours} hours")
+    if minutes:
+        parts.append(f"{minutes} minutes")
+    if seconds:
+        parts.append(f"{seconds} seconds")
+    
+    return " ".join(parts) or "0 seconds"

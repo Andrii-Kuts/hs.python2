@@ -55,8 +55,7 @@ def user_dropdown(analytics: Analytics):
 def best_player_history(analytics: Analytics):
     history = analytics.get_best_players_history()
     def entry_duration(entry):
-        rd = dateutil.relativedelta.relativedelta(entry[2], entry[1])
-        return "%d years, %d months, %d days, %d hours, %d minutes and %d seconds" % (rd.years, rd.months, rd.days, rd.hours, rd.minutes, rd.seconds)
+        return format_duration(entry[2] - entry[1])
     df = pd.DataFrame({
         "User": list(map(lambda entry : entry[0], history)),
         "Start": pd.to_datetime(list(map(lambda entry : entry[1], history)), utc=True),
@@ -77,7 +76,7 @@ def best_player_history(analytics: Analytics):
         dcc.Graph(figure=fig),
     ])
 
-def user_statstics(analytics: Analytics):
+def user_statistics(analytics: Analytics):
     def length_history():
         return dcc.Graph(id="user_length_history")
     
@@ -158,6 +157,87 @@ def user_statstics(analytics: Analytics):
         event_statistics(),
     ])
 
+def user_rankings_panel(analytics: Analytics):
+
+    def top_player_pie():
+        durations = analytics.get_user_domination_durations()
+        df = pd.DataFrame({
+            "User": list(map(lambda entry: entry[0], durations.items())),
+            "Duration": list(map(lambda entry: entry[1].total_seconds(), durations.items())),
+            "DurationHuman": list(map(lambda entry: format_duration(entry[1]), durations.items())),
+        })
+        fig = px.pie(
+            df,
+            values="Duration",
+            names="User",
+            custom_data=["DurationHuman"],
+            title="Duration as Best Player"
+        )
+        fig.update_traces(
+            hovertemplate="User: %{label}<br>Duration: %{customdata[0]}"
+        )
+        return dcc.Graph(figure=fig)
+    
+    def events_pie():
+        events = analytics.get_all_deltas()
+        df = pd.DataFrame({
+            "User": list(map(lambda entry: entry[0], events)),
+        })
+        df_counts = df.value_counts("User").reset_index()
+        df_counts.columns = ["User", "Count"]
+        fig = px.pie(
+            df_counts,
+            names="User",
+            values="Count",
+            title="Events Count"
+        )
+        return dcc.Graph(figure=fig)
+
+    def left_panel():
+        return html.Div([
+            top_player_pie(),
+            events_pie(),
+        ], style={
+            "flex": "1",
+            "display": "flex",
+            "flexDirection": "column",
+            "alignItems": "center",
+            "gap": "20px",
+            "padding": "20px"
+        })
+    def right_panel():
+        return html.Div([
+            html.Div(
+                # dcc.Graph(id="ranking_average_interval"),
+                style={"flex": "1"},
+            ),
+            html.Div(
+                # dcc.Graph(id="ranking_longest_streak"),
+                style={"flex": "1"},
+            ),
+            html.Div(
+                # dcc.Graph(id="ranking_current_streak"),
+                style={"flex": "1"},
+            ),
+        ], style={
+            "flex": "1",
+            "display": "flex",
+            "flexDirection": "row",
+            "alignItems": "center",
+            "gap": "20px",
+            "padding": "20px"
+        })
+    return html.Div([
+        left_panel(),
+        right_panel(),
+    ], style={
+        "display": "flex",
+        "flexDirection": "row",
+        "alignItems": "center",
+        "gap": "20px",
+        "padding": "20px"
+    })
+
 def init(analytics: Analytics):
     app = dash.Dash(__name__)
     pio.templates["fonts"] = go.layout.Template(
@@ -173,7 +253,8 @@ def init(analytics: Analytics):
         }),
         current_length(analytics),
         best_player_history(analytics),
-        user_statstics(analytics),
+        user_statistics(analytics),
+        user_rankings_panel(analytics),
     ])
     @app.callback(
         Output("user_length_history", "figure"),
@@ -200,7 +281,7 @@ def init(analytics: Analytics):
                     mode="lines",
                     line=dict(color=color, width=10),
                     hoverinfo="text",
-                    text=f"{name} | Duration: {format_plural(streak[2], "day")} | Start: {format_date(streak[0])} | End: {format_date(streak[1])}",
+                    text=f"{name}<br>Duration: {format_plural(streak[2], "day")}<br>Start: {format_date(streak[0])}<br>End: {format_date(streak[1])}",
                     name=name
                 )
             )

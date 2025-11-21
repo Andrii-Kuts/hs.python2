@@ -6,7 +6,7 @@ import plotly.io as pio
 import plotly.graph_objects as go
 import pandas as pd
 import dateutil.relativedelta
-from datetime import datetime, timedelta
+import os
 
 def current_length(analytics: Analytics):
     users = sorted([(user, analytics.get_user_length(user)) for user in analytics.get_users()], key = lambda entry : entry[1])
@@ -239,4 +239,5 @@ def init(analytics: Analytics):
         )
         return fig_day, fig_time, fig_delta
     
-    app.run(host="0.0.0.0", port=8050, debug=False)
+    is_debug = os.getenv("DEBUG") == "TRUE"
+    app.run(host="0.0.0.0", port=8050, debug=is_debug)

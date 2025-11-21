@@ -4,12 +4,14 @@ from analytics import build_analytics
 from user_options import read_options
 from dataset import get_dataset
 import plotter
+from dotenv import load_dotenv
 
 # EXPERIMENTAL Saves parsed data into a database
 def migrate_to_db():
     ...
 
 def main():
+    load_dotenv()
     messenger.notify_app_started()
     read_options()
     dataset = get_dataset()

@@ -6,6 +6,7 @@ import plotly.io as pio
 import plotly.graph_objects as go
 import pandas as pd
 import dateutil.relativedelta
+from datetime import datetime, timedelta
 
 def current_length(analytics: Analytics):
     users = sorted([(user, analytics.get_user_length(user)) for user in analytics.get_users()], key = lambda entry : entry[1])
@@ -16,12 +17,12 @@ def current_length(analytics: Analytics):
         "Length": y,
     })
     fig=px.bar(
-            df,
-            x="User",
-            y="Length",
-            color_discrete_sequence=["DeepSkyBlue"],
-            title="Length by User",
-        )
+        df,
+        x="User",
+        y="Length",
+        color_discrete_sequence=["DeepSkyBlue"],
+        title="Length by User",
+    )
     return html.Div([
         dcc.Graph(figure=fig),
     ])
@@ -205,8 +206,8 @@ def init(analytics: Analytics):
         df_day = pd.DataFrame({
             "Day": df["Date"].dt.day_name()
         })
-        df_time = pd.DataFrame({
-            "Time": df["Date"].dt.hour
+        df_hour = pd.DataFrame({
+            "Hour": df["Date"].dt.hour,
         })
         df_delta = pd.DataFrame({
             "Delta": df["Delta"]
@@ -218,8 +219,24 @@ def init(analytics: Analytics):
             title=f"Events by Day",
             color_discrete_sequence=["DeepSkyBlue"],
         )
-        fig_time = px.histogram(df_time, x="Time", title=f"Events by Time", color_discrete_sequence=["DeepSkyBlue"])
-        fig_delta = px.histogram(df_delta, x="Delta", title=f"Events by Delta", color_discrete_sequence=["DeepSkyBlue"])
+        fig_time = px.histogram(
+            df_hour,
+            x="Hour",
+            title=f"Events by Hour",
+            color_discrete_sequence=["DeepSkyBlue"],
+            nbins=24,
+        )
+        fig_time.update_traces(
+            hovertemplate="Interval: %{x:02d}:00 - %{customdata:02d}:00<br>Count: %{y}<extra></extra>",
+            customdata=[(h + 1) % 24 for h in range(24)],
+        )
+        fig_delta = px.histogram(
+            df_delta,
+            x="Delta",
+            title=f"Events by Delta",
+            color_discrete_sequence=["DeepSkyBlue"],
+            nbins=16
+        )
         return fig_day, fig_time, fig_delta
     
     app.run(host="0.0.0.0", port=8050, debug=False)

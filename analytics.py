@@ -13,13 +13,24 @@ class Analytics:
             self.users.add(user)
         logger.info(f"[Analytics] Done! Found a total of {len(self.users)} users")
 
+    def __check_deltas(self, dataset: Dataset):
+        logger.info(f"[Analytics] Starting to check deltas for inconsistencies")
+        user_lengths = {}
+        for delta in dataset.deltas:
+            user = delta.user
+            cur_length = apply_delta(user_lengths.get(user, 0), delta)
+            user_lengths[user] = cur_length
+            if delta.new_length is not None and cur_length != delta.new_length:
+                logger.warning(f"Warning! Calculated and provided lengths don't match: user = {user} time = {delta.timestamp} expected = {cur_length} actual = {delta.new_length}")
+        logger.info(f"[Analytics] Finished checkin deltas for inconsistencies")
+
     def __calculate_user_length_histories(self, dataset: Dataset):
         logger.info(f"[Analytics] Starting to calculate user length histories")
         self.user_length_histories: dict[str,list[tuple[datetime, int]]] = {}
         user_lengths = {}
         for delta in dataset.deltas:
             user = delta.user
-            cur_length = user_lengths.get(user, 0) + delta.delta
+            cur_length = apply_delta(user_lengths.get(user, 0), delta)
             user_lengths[user] = cur_length
             if user not in self.user_length_histories:
                 self.user_length_histories[user] = []
@@ -45,7 +56,7 @@ class Analytics:
         cur_start: datetime = None
         for delta in dataset.deltas:
             user = delta.user
-            cur_length = user_lengths.get(user, 0) + delta.delta
+            cur_length = apply_delta(user_lengths.get(user, 0), delta)
             user_lengths[user] = cur_length
 
             # update best
@@ -70,39 +81,51 @@ class Analytics:
             self.best_players_history.append((cur_best, cur_start, datetime.now(timezone.utc)))
         logger.info(f"[Analytics] Best players history is done!")
 
-    def __calculate_best_streaks(self, dataset: Dataset):
-        logger.info(f"[Analytics] Starting to calculate best streaks")
-        self.best_streak: dict[str, int] = {}
-        streak_info: dict[str, tuple[datetime, int]] = {}
+    def __calculate_streaks(self, dataset: Dataset):
+        logger.info(f"[Analytics] Starting to calculate streaks")
+        self.streaks: dict[str, list[tuple[datetime, datetime, int]]] = {}
+        current_streak: dict[str, tuple[datetime, datetime, int]] = {}
+        def add_streak(user: str, streak: tuple[datetime, datetime, int]):
+            if user not in self.streaks:
+                self.streaks[user] = []
+            self.streaks[user].append(streak)
+        def close_streak(user: str):
+            if user not in current_streak:
+                return
+            add_streak(user, current_streak.get(user))
         for delta in dataset.deltas:
             user = delta.user
-            cur_streak = 0
-            if user not in streak_info:
-                streak_info[user] = (delta.timestamp, 1)
-                cur_streak = 1
+            date = delta.timestamp
+            cur_streak_count = 0
+            if user not in current_streak:
+                current_streak[user] = (date, date, 1)
+                cur_streak_count = 1
             else:
-                streak = streak_info.get(user)
-                prev_day = streak[0]
-                if same_pesun_day(prev_day, delta.timestamp):
-                    logger.warning(f"[Analytics] Warning while calculating streaks! Two events in the same day!")
-                    self.debug(prev_day, delta.timestamp)
-                elif consecutive_pesun_days(prev_day, delta.timestamp):
-                    cur_streak = streak[1]+1
+                streak = current_streak.get(user)
+                prev_date = streak[1]
+                start_date = streak[0]
+                if same_pesun_day(prev_date, date):
+                    logger.warning(f"[Analytics] Warning while calculating streaks! Two events in the same day! user = {user} prev_date = {prev_date} date = {date}")
+                elif consecutive_pesun_days(prev_date, delta.timestamp):
+                    cur_streak_count = streak[2]+1
                 else:
-                    cur_streak = 1
-                streak_info[user] = (delta.timestamp, cur_streak)
-            if cur_streak > self.best_streak.get(user, 0):
-                self.best_streak[user] = cur_streak
-        logger.info(f"[Analytics] Best streaks are done!")
+                    close_streak(user)
+                    cur_streak_count = 1
+                    start_date = date
+                current_streak[user] = (start_date, date, cur_streak_count)
+        for user in current_streak.keys():
+            close_streak(user)
+        logger.info(f"[Analytics] Streaks are done!")
 
     def __init__(self, dataset: Dataset):
         deltas = dataset.deltas
         logger.info(f"[Analytics] Starting building analytics from {len(deltas)} deltas")
         self.__list_users(dataset)
+        self.__check_deltas(dataset)
         self.__calculate_user_length_histories(dataset)
         self.__calculate_user_deltas(dataset)
         self.__calculate_best_players_history(dataset)
-        self.__calculate_best_streaks(dataset)
+        self.__calculate_streaks(dataset)
         logger.info(f"[Analytics] Done buildng all analytics")
 
     def get_users(self) -> set[str]:
@@ -131,14 +154,24 @@ class Analytics:
             return duration
         return duration / count
         
-    def get_user_best_streak(self, user: str) -> int:
-        return self.best_streak.get(user, 0)
+    def get_user_best_streak(self, user: str) -> tuple[datetime, datetime, int]:
+        return max(self.streaks.get(user), key=lambda streak: streak[2])
 
     def get_user_deltas(self, user: str) -> list[tuple[datetime, int]]:
         return self.user_deltas.get(user)
     
     def get_best_players_history(self):
         return self.best_players_history
+    
+    def get_user_streaks(self, user: str) -> list[tuple[datetime, datetime, int]]:
+        return self.streaks.get(user)
+    
+    def get_user_current_streak(self, user: str) -> int:
+        streak = self.streaks.get(user)[-1]
+        deadline = next_pesun_date(streak[1])
+        now = datetime.now(timezone.utc)
+        return streak[2] if now <= deadline else 0
+
     
 def build_analytics(dataset: Dataset) -> Analytics:
     return Analytics(dataset)

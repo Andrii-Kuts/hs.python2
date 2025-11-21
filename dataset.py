@@ -8,14 +8,16 @@ import user_options
 import messenger
 
 def __write_delta(file, delta: DeltaInstance):
-    file.write(f"{delta.timestamp.isoformat()} {delta.user} {delta.delta} {delta.wait_minutes}\n")
+    file.write(f"{delta.timestamp.isoformat()} {delta.user} {delta.delta} {delta.wait_minutes} {"None" if not delta.new_length else delta.new_length}\n")
 
 def __read_delta(line: str) -> DeltaInstance:
-    timestamp_str,user,delta_str,wait_time_str = line.split()
+    timestamp_str,user,delta_str,wait_time_str,new_length_str = line.split()
     timestamp = datetime.datetime.fromisoformat(timestamp_str)
     delta = int(delta_str)
     wait_time = int(wait_time_str)
-    return DeltaInstance(user, timestamp, delta, wait_time)
+    is_reset = delta == 0
+    new_length = None if new_length_str == "None" else int(new_length_str)
+    return DeltaInstance(user, timestamp, delta, wait_time, is_reset, new_length)
 
 def save_dataset(dataset: Dataset):
     os.makedirs("cache", exist_ok=True)

@@ -1,6 +1,7 @@
 from logger import logger
 from datetime import datetime, timezone, timedelta
 import pytz
+from classes import DeltaInstance
 
 def normalize_date(date: datetime):
     tz = timezone(timedelta(hours=0))
@@ -43,3 +44,12 @@ def consecutive_pesun_days(prev: datetime, cur: datetime) -> bool:
     nx1 = next_pesun_date(next_pesun_date(prev))
     nx2 = next_pesun_date(cur)
     return nx1 == nx2
+
+def apply_delta(length: int, delta: DeltaInstance) -> int:
+    return 0 if delta.is_reset else length+delta.delta
+
+def format_plural(val: int, name: str):
+    return f"{val} {name}{"" if val == 1 else "s"}"
+
+def format_date(date: datetime) -> str:
+    return date.strftime("%d.%m.%Y")

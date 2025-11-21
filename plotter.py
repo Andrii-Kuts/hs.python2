@@ -7,6 +7,8 @@ import plotly.graph_objects as go
 import pandas as pd
 import dateutil.relativedelta
 import os
+from utils import *
+from plotly.colors import sample_colorscale, sequential
 
 def current_length(analytics: Analytics):
     users = sorted([(user, analytics.get_user_length(user)) for user in analytics.get_users()], key = lambda entry : entry[1])
@@ -109,6 +111,13 @@ def user_statstics(analytics: Analytics):
                 className="numeric-statistic",
                 style={"flex": "1", "color": "DeepSkyBlue"},
             ),
+            html.Div([
+                    html.Div("Current Streak", className="numeric-statistic-title"),
+                    html.Div(id="user_current_streak", className="numeric-statistic-value"),
+                ],
+                className="numeric-statistic",
+                style={"flex": "1", "color": "DeepSkyBlue"},
+            ),
         ], style={
             "display": "flex",
             "flexDirection": "row",
@@ -176,6 +185,25 @@ def init(analytics: Analytics):
             "Length": list(map(lambda entry: entry[1], history)),
         })
         fig = px.line(df, x="Date", y="Length", title=f"{user}'s Length History")
+        streaks = list(filter(lambda streak: streak[2] > 1, analytics.get_user_streaks(user)))
+        count = 10
+        streaks = sorted(streaks, key=lambda streak: streak[2], reverse=True)[:count]
+        for i in range(len(streaks)):
+            streak = streaks[i]
+            color = sample_colorscale(sequential.Aggrnyl_r, i / (count-1), colortype="hex")[0]
+            color = f"rgb({color[0]},{color[1]},{color[2]})"
+            name = f"Streak #{i+1}"
+            fig.add_trace(
+                go.Scatter(
+                    x=[streak[0], streak[1]],
+                    y=[0, 0],
+                    mode="lines",
+                    line=dict(color=color, width=10),
+                    hoverinfo="text",
+                    text=f"{name} | Duration: {format_plural(streak[2], "day")} | Start: {format_date(streak[0])} | End: {format_date(streak[1])}",
+                    name=name
+                )
+            )
         return fig
 
     @app.callback(
@@ -183,14 +211,16 @@ def init(analytics: Analytics):
         Output("user_events", "children"),
         Output("user_average_interval", "children"),
         Output("user_longest_streak", "children"),
+        Output("user_current_streak", "children"),
         Input("user_dropdown", "value"))
     def update_user_numerics(user: str):
         best_rank = analytics.get_user_best_rank(user)
         events_count = analytics.get_user_events_count(user)
         average_interval = analytics.get_user_average_interval(user)
         interval_days = round(average_interval.total_seconds() / (60 * 60 * 24), 2)
-        best_streak = analytics.get_user_best_streak(user)
-        return f"#{best_rank}", events_count, f"{interval_days} days", f"{best_streak} day(s)"
+        best_streak = analytics.get_user_best_streak(user)[2]
+        current_streak = analytics.get_user_current_streak(user)
+        return f"#{best_rank}", events_count, f"{interval_days} days", format_plural(best_streak, "day"), format_plural(current_streak, "day")
     
     @app.callback(
         Output("user_events_day", "figure"),

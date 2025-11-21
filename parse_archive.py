@@ -49,12 +49,15 @@ def __parse_timestamp(message: str) -> datetime:
     timestamp = datetime.strptime(timestamp_str, "%d.%m.%Y %H:%M:%S %z")
     return timestamp
 
-def __parse_length_change(message: str) -> int:
+def __parse_length_change(message: str) -> tuple[int, bool, int]:
     length_change = None
     grow = re.search(r'виріс на (\d+)', message)
     shrink = re.search(r'скоротився на (\d+)', message)
-    length_change = int(grow.group(1)) if grow else (-int(shrink.group(1)) if shrink else None)
-    return length_change
+    reset = re.search(r'в тебе немає песюна', message)
+    new_length_search = re.search(r'Тепер його довжина: (\d+)', message)
+    new_length = int(new_length_search.group(1)) if new_length_search else None
+    length_change = (int(grow.group(1)), False) if grow else ((-int(shrink.group(1)), False) if shrink else ((0, True) if reset else None))
+    return None if length_change is None else length_change + (new_length,)
 
 def __parse_wait_minutes(message: str) -> int:
     wait_search = re.search(r'Продовжуй грати через (\d+) год., (\d+) хв.', message)
@@ -113,11 +116,13 @@ def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernam
     length_change = __parse_length_change(message)
     if length_change is None:
         return None
+    delta,is_reset,new_length = length_change
+
     user = __parse_user(message, usernames, unknown_users)
     if user is None:
         return None
     wait_minutes = __parse_wait_minutes(message)
-    return DeltaInstance(user, timestamp, length_change, wait_minutes)
+    return DeltaInstance(user, timestamp, delta, wait_minutes, is_reset, new_length)
 
 def __parse_html(file_path: Path, usernames: dict[str, str], unknown_users: set[str]) -> list[DeltaInstance]:
     logger.info(f"Parsing file {file_path.name}")

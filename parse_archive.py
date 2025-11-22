@@ -10,7 +10,7 @@ class MessageMeta:
         self.from_user = from_user
         self.id = id
 
-def __parse_usernames(archive_path: Path) -> dict[str, str]:
+def __parse_username_overrides(archive_path: Path) -> dict[str, str]:
     file_path = archive_path / "nicknames.txt"
     if not file_path.exists():
         logger.error("Nicknames file doesn't exist")
@@ -37,6 +37,11 @@ def __parse_from_user(message: str) -> str:
     from_user_search = re.search(r'<div class="from_name">\s*(.*?)\s*<\/div>', message, flags=re.DOTALL)
     from_user = from_user_search.group(1).strip() if from_user_search else None
     return from_user
+
+def __parse_response_id(message: str) -> int:
+    id_search = re.search(r'GoToMessage\((\d+)\)', message, flags=re.DOTALL)
+    id = int(id_search.group(1).strip()) if id_search else None
+    return id
     
 def __parse_timestamp(message: str) -> datetime:
     timestamp_search = re.search(r'title="([^"]+)"', message)
@@ -72,27 +77,48 @@ def __parse_message_meta(message: str) -> MessageMeta:
     from_user = __parse_from_user(message)
     return MessageMeta(from_user, id)
 
-def __parse_user(message: str, usernames: dict[str, str], unknown_users: set[str]) -> str:
+def __parse_handle(message: str):
     user = None
     text_match = re.search(r'<div class="text">([.\s\S]*?)<\/div>', message, flags=re.DOTALL)
     if not text_match:
         return None
     text_content = text_match.group(1)
     user_search = re.search(r'<a[^>]*>\s*@([^<\n]+)\s*<\/a>', text_content, flags=re.DOTALL)
-    # User handle provided, parsing and checking usernames map
+    # User handle provided
     if user_search:
         nickname = '@' + user_search.group(1)
-        user = usernames.get(nickname)
-        if user is None:
-            logger.warning(f"Unknown user: {nickname}")
-            unknown_users.add(nickname)
-    # No handle, user name might be provided directly
+        return nickname
+    # No handle, user name has been provided directly
     else:
         name_match = re.search(r'<div class="text">\s*([^<>,]+),\s*твій песюн', message)
         user = name_match.group(1).strip() if name_match else None
     return user
 
-def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernames: dict[str, str], unknown_users: set[str]) -> DeltaInstance:
+def __parse_user(message: str, messages_meta: dict[str, MessageMeta], username_overrides: dict[str, str], saved_handles: dict[str, str]) -> str:
+    id = __parse_response_id(message)
+    handle = __parse_handle(message)
+    if id is None or id not in messages_meta:
+        logger.warning("Original message was not found. Resorting to a backup")
+        return saved_handles.get(handle) if handle is not None else None
+    user = None
+    while True:
+        original_message = messages_meta.get(id)
+        if not original_message:
+            break
+        user = original_message.from_user
+        if user:
+            break
+        id -= 1
+    if user is None:
+        logger.warning(f"Message has no user?? id = {__parse_message_id(message)} response_id = {__parse_response_id(message)}")
+        return None
+    user = user.split()[0].strip()
+    user = username_overrides[user] if user in username_overrides else user
+    if handle is not None:
+        saved_handles[handle] = user
+    return user
+
+def __parse_message(message: str, messages_meta: dict[str, MessageMeta], username_overrides: dict[str, str], saved_handles: dict[str, str]) -> DeltaInstance:
     id = __parse_message_id(message)
     joined = re.search(r'message default clearfix joined', message)
     from_user = None
@@ -118,13 +144,13 @@ def __parse_message(message: str, messages_meta: dict[str, MessageMeta], usernam
         return None
     delta,is_reset,new_length = length_change
 
-    user = __parse_user(message, usernames, unknown_users)
+    user = __parse_user(message, messages_meta, username_overrides, saved_handles)
     if user is None:
         return None
     wait_minutes = __parse_wait_minutes(message)
     return DeltaInstance(user, timestamp, delta, wait_minutes, is_reset, new_length)
 
-def __parse_html(file_path: Path, usernames: dict[str, str], unknown_users: set[str]) -> list[DeltaInstance]:
+def __parse_html(file_path: Path, username_overrides: dict[str, str], saved_handles: dict[str, str]) -> list[DeltaInstance]:
     logger.info(f"Parsing file {file_path.name}")
     with open(file_path, 'r') as file:
         content = file.read()
@@ -134,10 +160,16 @@ def __parse_html(file_path: Path, usernames: dict[str, str], unknown_users: set[
         blocks = regular_blocks + joined_blocks
         messages_meta_list = list(map(__parse_message_meta, blocks))
         messages_meta = {meta.id: meta for meta in messages_meta_list}
-        parsed_messages = list(map(lambda body_block : __parse_message(body_block, messages_meta, usernames, unknown_users), blocks))
+        parsed_messages = list(map(lambda body_block : __parse_message(body_block, messages_meta, username_overrides, saved_handles), blocks))
         result = list(filter(lambda delta : delta is not None, parsed_messages))
         logger.info(f"Successfully parsed {len(result)} blocks")
         return result
+
+def __get_file_id(file: Path) -> int:
+    id_search = re.search(r'messages(\d+).html', file.name)
+    if not id_search:
+        return 1
+    return int(id_search.group(1))
 
 def parse_archive(path) -> Dataset:
     file = Path(path)
@@ -148,13 +180,13 @@ def parse_archive(path) -> Dataset:
         logger.error("File is not a folder")
 
     logger.info("Reading archive contents")
-    usernames = __parse_usernames(file)
-    message_files = list(file.glob("messages*.html"))
+    username_overrides = __parse_username_overrides(file)
+    message_files = list(sorted(file.glob("messages*.html"), key = __get_file_id))
 
     logger.info(f"Found {len(message_files)} files")
     deltas: list[DeltaInstance] = []
-    unknown_users = set()
+    saved_handles = {}
     for html_file in message_files:
-        deltas.extend(__parse_html(html_file, usernames, unknown_users))
+        deltas.extend(__parse_html(html_file, username_overrides, saved_handles))
     deltas.sort(key=lambda delta: delta.timestamp)
-    return Dataset(deltas, unknown_users)
+    return Dataset(deltas, set())

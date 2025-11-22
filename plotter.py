@@ -5,10 +5,10 @@ import plotly.express as px
 import plotly.io as pio
 import plotly.graph_objects as go
 import pandas as pd
-import dateutil.relativedelta
 import os
 from utils import *
 from plotly.colors import sample_colorscale, sequential
+import numpy as np
 
 def current_length(analytics: Analytics):
     users = sorted([(user, analytics.get_user_length(user)) for user in analytics.get_users()], key = lambda entry : entry[1])
@@ -157,86 +157,190 @@ def user_statistics(analytics: Analytics):
         event_statistics(),
     ])
 
-def user_rankings_panel(analytics: Analytics):
+def top_player_pie_figure(analytics: Analytics):
+    durations = analytics.get_user_domination_durations()
+    df = pd.DataFrame({
+        "User": list(map(lambda entry: entry[0], durations.items())),
+        "Duration": list(map(lambda entry: entry[1].total_seconds(), durations.items())),
+        "DurationHuman": list(map(lambda entry: format_duration(entry[1]), durations.items())),
+    })
+    fig = px.pie(
+        df,
+        values="Duration",
+        names="User",
+        custom_data=["DurationHuman"],
+        title="Duration as Best Player"
+    )
+    fig.update_traces(
+        hovertemplate="User: %{label}<br>Duration: %{customdata[0]}",
+    )
+    fig.update_layout(
+        showlegend=False,
+    )
+    return fig
 
-    def top_player_pie():
-        durations = analytics.get_user_domination_durations()
+def events_pie_figure(analytics: Analytics):
+    events = analytics.get_all_deltas()
+    df = pd.DataFrame({
+        "User": list(map(lambda entry: entry[0], events)),
+    })
+    df_counts = df.value_counts("User").reset_index()
+    df_counts.columns = ["User", "Count"]
+    fig = px.pie(
+        df_counts,
+        names="User",
+        values="Count",
+        title="Events Count"
+    )
+    fig.update_layout(
+        showlegend=False,
+    )
+    return fig
+
+def user_rankings_panel(analytics: Analytics):
+    def average_interval():
+        users = analytics.get_users()
+        average_intervals = list(map(lambda user: (user, analytics.get_user_average_interval(user)), users))
+        average_intervals = sorted(average_intervals, key=lambda entry: entry[1], reverse=True)
         df = pd.DataFrame({
-            "User": list(map(lambda entry: entry[0], durations.items())),
-            "Duration": list(map(lambda entry: entry[1].total_seconds(), durations.items())),
-            "DurationHuman": list(map(lambda entry: format_duration(entry[1]), durations.items())),
+            "User": list(map(lambda entry: entry[0], average_intervals)),
+            "Days": list(map(lambda entry: entry[1].total_seconds() / (24*60*60), average_intervals)),
+            "DaysLog": list(map(lambda entry: np.log10(entry[1].total_seconds() / (24*60*60)), average_intervals)),
         })
-        fig = px.pie(
+        fig = px.bar(
             df,
-            values="Duration",
-            names="User",
-            custom_data=["DurationHuman"],
-            title="Duration as Best Player"
+            y="User",
+            x="Days",
+            title="Average Interval",
+            orientation="h",
+            log_x=True,
+            color="DaysLog",
+            color_continuous_scale=sequential.Aggrnyl_r,
+            hover_data={"User": True, "Days": True, "DaysLog": False},
         )
-        fig.update_traces(
-            hovertemplate="User: %{label}<br>Duration: %{customdata[0]}"
+        fig.update_layout(coloraxis_showscale=False)
+        return dcc.Graph(
+            figure=fig,
+            style={"height": "100%", "width": "100%"},
+            config={"responsive": True}
         )
-        return dcc.Graph(figure=fig)
     
-    def events_pie():
-        events = analytics.get_all_deltas()
+    def longest_streak():
+        users = analytics.get_users()
+        longest_streaks = list(map(lambda user: (user, analytics.get_user_best_streak(user)), users))
+        longest_streaks = sorted(longest_streaks, key=lambda entry: entry[1][2])
         df = pd.DataFrame({
-            "User": list(map(lambda entry: entry[0], events)),
+            "User": list(map(lambda entry: entry[0], longest_streaks)),
+            "Duration": list(map(lambda entry: entry[1][2], longest_streaks)),
+            "Start": list(map(lambda entry: format_date(entry[1][0]), longest_streaks)),
+            "End": list(map(lambda entry: format_date(entry[1][1]), longest_streaks)),
         })
-        df_counts = df.value_counts("User").reset_index()
-        df_counts.columns = ["User", "Count"]
-        fig = px.pie(
-            df_counts,
-            names="User",
-            values="Count",
-            title="Events Count"
+        fig = px.bar(
+            df,
+            y="User",
+            x="Duration",
+            title="Longest Streak",
+            orientation="h",
+            color="Duration",
+            color_continuous_scale=sequential.Aggrnyl,
+            hover_data=["User", "Duration", "Start", "End"],
         )
-        return dcc.Graph(figure=fig)
+        fig.update_layout(coloraxis_showscale=False)
+        return dcc.Graph(
+            figure=fig,
+            style={"height": "100%", "width": "100%"},
+            config={"responsive": True}
+        )
+    
+    def current_streak():
+        users = analytics.get_users()
+        current_streaks = list(map(lambda user: (user, analytics.get_user_current_streak(user)), users))
+        current_streaks = sorted(filter(lambda entry: entry[1] > 0, current_streaks), key=lambda entry: entry[1])
+        df = pd.DataFrame({
+            "User": list(map(lambda entry: entry[0], current_streaks)),
+            "Duration": list(map(lambda entry: entry[1], current_streaks)),
+        })
+        fig = px.bar(
+            df,
+            y="User",
+            x="Duration",
+            title="Current Streak",
+            orientation="h",
+            color="Duration",
+            color_continuous_scale=sequential.Aggrnyl,
+        )
+        fig.update_layout(coloraxis_showscale=False)
+        return dcc.Graph(
+            figure=fig,
+            style={"height": "100%", "width": "100%"},
+            config={"responsive": True}
+        )
 
     def left_panel():
         return html.Div([
-            top_player_pie(),
-            events_pie(),
+            html.Div(
+                dcc.Graph(
+                    figure=top_player_pie_figure(analytics),
+                    style={"height": "100%", "width": "100%"},
+                    config={"responsive": True},
+                    id="top_player_pie",
+                ),
+                style={"flex": "1", "height": "50%", "aspect-ratio": "1"},
+            ),
+            html.Div(
+                dcc.Graph(
+                    figure=events_pie_figure(analytics),
+                    style={"height": "100%", "width": "100%"},
+                    config={"responsive": True},
+                    id="events_pie",
+                ),
+                style={"flex": "1", "height": "50%", "aspect-ratio": "1"},
+            ),
+            dcc.Interval(id="pies_refresh", interval=100, n_intervals=0, max_intervals=1),
         ], style={
             "flex": "1",
             "display": "flex",
             "flexDirection": "column",
             "alignItems": "center",
-            "gap": "20px",
-            "padding": "20px"
+            "gap": "0px",
+            "padding": "0px",
+            "align-self": "stretch",
         })
     def right_panel():
         return html.Div([
             html.Div(
-                # dcc.Graph(id="ranking_average_interval"),
+                average_interval(),
                 style={"flex": "1"},
             ),
             html.Div(
-                # dcc.Graph(id="ranking_longest_streak"),
+                longest_streak(),
                 style={"flex": "1"},
             ),
             html.Div(
-                # dcc.Graph(id="ranking_current_streak"),
+                current_streak(),
                 style={"flex": "1"},
             ),
         ], style={
             "flex": "1",
             "display": "flex",
+            "flexDirection": "column",
+            "alignItems": "center",
+            "gap": "0px",
+            "padding": "0px",
+        })
+    return html.Div([
+        html.H2("Rankings"),
+        html.Div([
+            left_panel(),
+            right_panel(),
+        ], style={
+            "display": "flex",
             "flexDirection": "row",
             "alignItems": "center",
             "gap": "20px",
-            "padding": "20px"
-        })
-    return html.Div([
-        left_panel(),
-        right_panel(),
-    ], style={
-        "display": "flex",
-        "flexDirection": "row",
-        "alignItems": "center",
-        "gap": "20px",
-        "padding": "20px"
-    })
+            "marginTop": "40px",
+        }),
+    ])
 
 def init(analytics: Analytics):
     app = dash.Dash(__name__)
@@ -349,6 +453,18 @@ def init(analytics: Analytics):
             nbins=16
         )
         return fig_day, fig_time, fig_delta
+    
+    @app.callback(
+        Output("top_player_pie", "figure"),
+        Output("events_pie", "figure"),
+        Input("pies_refresh", "n_intervals")
+    )
+    def refresh_pie(n):
+        if n > 1:
+            return dash.no_update
+        fig_top_player = top_player_pie_figure(analytics)
+        fig_events = events_pie_figure(analytics)
+        return fig_top_player, fig_events
     
     is_debug = os.getenv("DEBUG") == "TRUE"
     app.run(host="0.0.0.0", port=8050, debug=is_debug)

@@ -90,7 +90,7 @@ def user_statistics(analytics: Analytics):
                 style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
-                    html.Div("Events Count", className="numeric-statistic-title"),
+                    html.Div("Games Count", className="numeric-statistic-title"),
                     html.Div(id="user_events", className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
@@ -129,22 +129,30 @@ def user_statistics(analytics: Analytics):
     def event_statistics():
         return html.Div([
             html.Div(
-                dcc.Graph(id="user_events_day"),
+                dcc.Graph(
+                    id="user_events_day",
+                    style={"height": "100%", "width": "100%"},  
+                ),
                 style={"flex": "1"},
             ),
             html.Div(
-                dcc.Graph(id="user_events_time"),
+                dcc.Graph(
+                    id="user_events_time",
+                    style={"height": "100%", "width": "100%"},  
+                ),
                 style={"flex": "1"},
             ),
             html.Div(
-                dcc.Graph(id="user_events_delta"),
+                dcc.Graph(
+                    id="user_events_delta",
+                    style={"height": "100%", "width": "100%"},  
+                ),
                 style={"flex": "1"},
             ),
         ], style={
             "display": "flex",
             "flexDirection": "row",
             "alignItems": "center",
-            "gap": "20px",
             "paddingLeft": "20px",
             "paddingRight": "20px",
         })
@@ -190,10 +198,13 @@ def events_pie_figure(analytics: Analytics):
         df_counts,
         names="User",
         values="Count",
-        title="Events Count"
+        title="Games Count"
     )
     fig.update_layout(
         showlegend=False,
+    )
+    fig.update_traces(
+        textposition="inside",
     )
     return fig
 
@@ -201,7 +212,7 @@ def user_rankings_panel(analytics: Analytics):
     def average_interval():
         users = analytics.get_users()
         average_intervals = list(map(lambda user: (user, analytics.get_user_average_interval(user)), users))
-        average_intervals = sorted(average_intervals, key=lambda entry: entry[1], reverse=True)
+        average_intervals = sorted(filter(lambda entry: entry[1].total_seconds() > 0, average_intervals), key=lambda entry: entry[1], reverse=True)
         df = pd.DataFrame({
             "User": list(map(lambda entry: entry[0], average_intervals)),
             "Days": list(map(lambda entry: entry[1].total_seconds() / (24*60*60), average_intervals)),
@@ -296,7 +307,6 @@ def user_rankings_panel(analytics: Analytics):
                 ),
                 style={"flex": "1", "height": "50%", "aspect-ratio": "1"},
             ),
-            dcc.Interval(id="pies_refresh", interval=100, n_intervals=0, max_intervals=1),
         ], style={
             "flex": "1",
             "display": "flex",
@@ -355,6 +365,7 @@ def init(analytics: Analytics):
             "marginTop": "20px",
             "marginBottom": "40px",
         }),
+        dcc.Interval(id="refresh", interval=100, n_intervals=0, max_intervals=1),
         current_length(analytics),
         best_player_history(analytics),
         user_statistics(analytics),
@@ -457,7 +468,7 @@ def init(analytics: Analytics):
     @app.callback(
         Output("top_player_pie", "figure"),
         Output("events_pie", "figure"),
-        Input("pies_refresh", "n_intervals")
+        Input("refresh", "n_intervals")
     )
     def refresh_pie(n):
         if n > 1:

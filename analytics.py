@@ -148,6 +148,8 @@ class Analytics:
     
     def get_user_average_interval(self, user: str) -> timedelta:
         deltas = self.get_user_deltas(user)
+        if len(deltas) < 2:
+            return timedelta()
         duration = deltas[-1][0] - deltas[0][0]
         count = len(deltas)-1
         if count <= 0:

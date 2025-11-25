@@ -10,6 +10,8 @@ import uuid
 import shutil
 from typing import AsyncGenerator, Union
 
+from utils import apply_delta
+
 class MessageMeta:
     def __init__(self, from_user: str, id: int):
         self.from_user = from_user
@@ -186,6 +188,18 @@ class ParseProgess:
     def isDone(self):
         return self.done
 
+def check_deltas(dataset: Dataset, fix: bool = False):
+    user_lengths = {}
+    for delta in dataset.deltas:
+        user = delta.user
+        cur_length = apply_delta(user_lengths.get(user, 0), delta)
+        user_lengths[user] = cur_length
+        if delta.new_length is not None and cur_length != delta.new_length:
+            logger.warning(f"Warning! Calculated and provided lengths don't match: user = {user} time = {delta.timestamp} expected = {cur_length} actual = {delta.new_length}")
+            if fix:
+                delta.delta += delta.new_length - cur_length
+                user_lengths[user] = delta.new_length
+
 async def parse_folder(file: Path) -> AsyncGenerator[ParseProgess, None]:
     if not file.exists():
         logger.error("File doesn't exist")
@@ -208,7 +222,9 @@ async def parse_folder(file: Path) -> AsyncGenerator[ParseProgess, None]:
         yield ParseProgess(done=False, file_number=i+1, total_files=len(message_files))
         deltas.extend(__parse_html(html_file, username_overrides, saved_handles))
     deltas.sort(key=lambda delta: delta.timestamp)
-    yield ParseProgess(done=True, dataset=Dataset(deltas, set()))
+    dataset = Dataset(deltas, set())
+    check_deltas(dataset, fix=True)
+    yield ParseProgess(done=True, dataset=dataset)
     return
 
 async def parse_zip(file: Path) -> AsyncGenerator[ParseProgess, None]:

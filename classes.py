@@ -10,6 +10,6 @@ class DeltaInstance:
         self.new_length = new_length
 
 class Dataset:
-    def __init__(self, deltas: list[DeltaInstance], unknown_users: list[str]):
+    def __init__(self, deltas: list[DeltaInstance], unknown_users: list[str] = []):
         self.deltas = deltas
         self.unknown_users = unknown_users

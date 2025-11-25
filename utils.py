@@ -2,6 +2,7 @@ from logger import logger
 from datetime import datetime, timezone, timedelta
 import pytz
 from classes import DeltaInstance
+import string
 
 def normalize_date(date: datetime):
     tz = timezone(timedelta(hours=0))
@@ -70,3 +71,11 @@ def format_duration(duration: timedelta):
         parts.append(f"{seconds} seconds")
     
     return " ".join(parts) or "0 seconds"
+
+def hash_group_id(id: int) -> str:
+    letters_set = string.ascii_letters
+    res = ""
+    while id > 0:
+        res += letters_set[id % len(letters_set)]
+        id //= len(letters_set)
+    return res

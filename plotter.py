@@ -1,6 +1,10 @@
+import socket
+import time
+from wsgiref.simple_server import WSGIServer, make_server
+import requests
 from analytics import Analytics
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, Dash
 import plotly.express as px
 import plotly.io as pio
 import plotly.graph_objects as go
@@ -9,6 +13,11 @@ import os
 from utils import *
 from plotly.colors import sample_colorscale, sequential
 import numpy as np
+from threading import Thread
+from asyncio import Future, get_running_loop
+from flask import request
+from utils import hash_group_id
+import signal
 
 def current_length(analytics: Analytics):
     users = sorted([(user, analytics.get_user_length(user)) for user in analytics.get_users()], key = lambda entry : entry[1])
@@ -352,8 +361,8 @@ def user_rankings_panel(analytics: Analytics):
         }),
     ])
 
-def init(analytics: Analytics):
-    app = dash.Dash(__name__)
+def run(path: str, analytics: Analytics):
+    app = dash.Dash(__name__, routes_pathname_prefix=path, requests_pathname_prefix=path)
     pio.templates["fonts"] = go.layout.Template(
         layout=go.Layout(title_font=dict(family="Avenir Next", size=24))
     )
@@ -478,4 +487,65 @@ def init(analytics: Analytics):
         return fig_top_player, fig_events
     
     is_debug = os.getenv("DEBUG") == "TRUE"
-    app.run(host="0.0.0.0", port=8050, debug=is_debug)
+    app.server.debug = is_debug
+    server: WSGIServer = make_server(host='0.0.0.0', port=8050, app=app.server)
+    server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    app.server.app_context().push()
+    thread = Thread(target=lambda: server.serve_forever(), daemon=True)
+
+    thread.start()
+    return app, server, thread
+
+class PlotterData:
+    def __init__(self, app: Dash, server: WSGIServer, thread: Thread, path: str):
+        self.app = app
+        self.server = server
+        self.thread = thread
+        self.path = path
+
+class PlotterPool:
+    _instance: PlotterPool = None
+
+    @classmethod
+    def get_instance(cls):
+        if cls._instance is None:
+            cls._instance = PlotterPool()
+        return cls._instance
+
+    def __init__(self):
+        self.plotters: dict[int, PlotterData] = {}
+
+    def get_plotter_data(self, group_id: int):
+        return self.plotters.get(group_id)
+
+    def stop_plotter(self, group_id: int) -> Future[None]:
+        loop = get_running_loop()
+        future: Future[None] = loop.create_future()
+        plotterData = self.get_plotter_data(group_id)
+        if plotterData is None:
+            future.set_result(None)
+            return future
+        def stop_app():
+            plotterData.server.shutdown()
+            plotterData.server.socket.close()
+            plotterData.thread.join()
+            loop.call_soon_threadsafe(future.set_result, None)
+        thread = Thread(target=stop_app, daemon=True)
+        thread.start()
+        return future
+
+    def start_plotter(self, group_id: int, analytics: Analytics):
+        path = f"/{hash_group_id(group_id)}/"
+        app, server, thread = run(path, analytics)
+        return PlotterData(app, server, thread, path)
+    
+    async def get_plotter(self, group_id: int, analytics: Analytics):
+        await self.stop_plotter(group_id)
+        plotterData = self.start_plotter(group_id, analytics)
+        self.plotters[group_id] = plotterData
+        return plotterData
+    
+    async def stop_plotters(self):
+        for group_id in self.plotters:
+            await self.stop_plotter(group_id)
+

@@ -5,21 +5,21 @@ from user_options import read_options
 from dataset import get_dataset
 import plotter
 from dotenv import load_dotenv
-
-# EXPERIMENTAL Saves parsed data into a database
-def migrate_to_db():
-    ...
+import database
+import asyncio
+from bot import PesunBot
 
 def main():
     load_dotenv()
     messenger.notify_app_started()
     read_options()
-    dataset = get_dataset()
-    if len(dataset.unknown_users) > 0:
-        messenger.notify_unknown_users(dataset.unknown_users)
-
-    analytics = build_analytics(dataset)
-    plotter.init(analytics)
+    bot = PesunBot()
+    try:
+        logger.info("Starting telegram bot")
+        bot.run()
+    finally:
+        bot.stop()
+        logger.info("Telegram bot was stopped")
 
 if __name__ == "__main__":
     main()

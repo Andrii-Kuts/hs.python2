@@ -4,6 +4,11 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from datetime import datetime
 import re
+import zipfile
+import os
+import uuid
+import shutil
+from typing import AsyncGenerator, Union
 
 class MessageMeta:
     def __init__(self, from_user: str, id: int):
@@ -171,13 +176,25 @@ def __get_file_id(file: Path) -> int:
         return 1
     return int(id_search.group(1))
 
-def parse_archive(path) -> Dataset:
-    file = Path(path)
+class ParseProgess:
+    def __init__(self, done: bool, dataset: Dataset = None, file_number: int = None, total_files: int = None):
+        self.done = done
+        self.dataset = dataset
+        self.file_number = file_number
+        self.total_files = total_files
 
+    def isDone(self):
+        return self.done
+
+async def parse_folder(file: Path) -> AsyncGenerator[ParseProgess, None]:
     if not file.exists():
         logger.error("File doesn't exist")
+        yield ParseProgess(done=True, dataset=None)
+        return
     if not file.is_dir():
         logger.error("File is not a folder")
+        yield ParseProgess(done=True, dataset=None)
+        return
 
     logger.info("Reading archive contents")
     username_overrides = __parse_username_overrides(file)
@@ -186,7 +203,26 @@ def parse_archive(path) -> Dataset:
     logger.info(f"Found {len(message_files)} files")
     deltas: list[DeltaInstance] = []
     saved_handles = {}
-    for html_file in message_files:
+    for i in range(len(message_files)):
+        html_file = message_files[i]
+        yield ParseProgess(done=False, file_number=i+1, total_files=len(message_files))
         deltas.extend(__parse_html(html_file, username_overrides, saved_handles))
     deltas.sort(key=lambda delta: delta.timestamp)
-    return Dataset(deltas, set())
+    yield ParseProgess(done=True, dataset=Dataset(deltas, set()))
+    return
+
+async def parse_zip(file: Path) -> AsyncGenerator[ParseProgess, None]:
+    name = uuid.uuid4().hex
+    folder = file.parent / name
+    os.makedirs(folder, exist_ok=True)
+    result = None
+    try:
+        with zipfile.ZipFile(file, 'r') as zip_ref:
+            zip_ref.extractall(folder)
+            async for result in parse_folder(folder):
+                yield result
+            return
+    finally:
+        shutil.rmtree(folder)
+    yield ParseProgess(done=True, dataset=None)
+    return

@@ -3,7 +3,7 @@ from logger import logger
 import os
 from pathlib import Path
 import datetime
-from parse_archive import parse_archive
+from parse_archive import parse_folder
 import user_options
 import messenger
 
@@ -55,7 +55,7 @@ def get_dataset() -> Dataset:
         logger.info("Dataset file doesn't exist, parsing")
         archive_name = user_options.get_archive_name()
         messenger.archive_parsing()
-        dataset = parse_archive(archive_name)
+        dataset = parse_folder(Path(archive_name))
         save_dataset(dataset)
         messenger.archive_parsed()
         return dataset

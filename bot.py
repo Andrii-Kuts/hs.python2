@@ -96,7 +96,7 @@ class PesunBot:
         analytics = Analytics(dataset)
         response = await response.edit_text(f"⏱️  Starting dash app...")
         plotterData = await PlotterPool.get_instance().get_plotter(update.effective_chat.id, analytics)
-        response = await response.edit_text(f"📊  Link to analytics:\n\nhttp://0.0.0.0:8050{plotterData.path}")
+        response = await response.edit_text(f"📊  Link to analytics:\n\n{os.getenv("DASH_LINK")}:{os.getenv("DASH_PORT")}{plotterData.path}")
 
     async def stop_async(self):
         await PlotterPool.get_instance().stop_plotters()

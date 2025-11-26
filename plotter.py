@@ -487,8 +487,10 @@ def run(path: str, analytics: Analytics):
         return fig_top_player, fig_events
     
     is_debug = os.getenv("DEBUG") == "TRUE"
+    host = os.getenv("DASH_HOST")
+    port = int(os.getenv("DASH_PORT"))
     app.server.debug = is_debug
-    server: WSGIServer = make_server(host='0.0.0.0', port=8050, app=app.server)
+    server: WSGIServer = make_server(host=host, port=port, app=app.server)
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     app.server.app_context().push()
     thread = Thread(target=lambda: server.serve_forever(), daemon=True)

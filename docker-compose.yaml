@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
+    volumes:
+      - ./cache/database_data:/var/lib/postgresql/data
+  bot:
+    build:
+      dockerfile: Dockerfile
+    volumes:
+      - ./cache:/app/cache
+      - ./logs:/app/logs
+    environment:
+      DEBUG: ${DEBUG}
+      DATABASE_ENDPOINT: ${DATABASE_ENDPOINT}
+      DATABASE_USER: ${DATABASE_USER}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
+      TELEGRAM_BOT_KEY: ${TELEGRAM_BOT_KEY}
+      DASH_HOST: ${DASH_HOST}
+      DASH_LINK: ${DASH_LINK}
+      DASH_PORT: ${DASH_PORT}
+    ports:
+      - "${DASH_PORT}:${DASH_PORT}"
+    depends_on:
+      - db

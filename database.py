@@ -41,7 +41,12 @@ class Database:
         return cls._instance
 
     def __init__(self):
-        self.engine = create_async_engine(os.getenv("DB_URL"))
+        db_endpoint = os.getenv("DATABASE_ENDPOINT")
+        db_user = os.getenv("DATABASE_USER")
+        db_password = os.getenv("DATABASE_PASSWORD")
+        db_name = os.getenv("DATABASE_NAME")
+        db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_endpoint}/{db_name}"
+        self.engine = create_async_engine(db_url)
         self.AsyncSessionLocal: sessionmaker[AsyncSession] = sessionmaker(self.engine, class_=AsyncSession, expire_on_commit=False)
         
     async def _initialize(self):

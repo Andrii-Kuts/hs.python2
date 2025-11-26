@@ -1,14 +1,17 @@
+from datetime import datetime, timezone
 import telegram
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Application, filters, MessageHandler
 import os
 from dotenv import load_dotenv
+from classes import DeltaInstance
 from parse_archive import parse_zip
 from database.database import Database
 import uuid
 from analytics import Analytics
 from plotter import PlotterPool
 from asyncio import CancelledError, get_event_loop, sleep, create_task
+from logger import logger
 
 class PesunBot:
     def __init__(self):
@@ -17,6 +20,7 @@ class PesunBot:
 
         self.app.add_handler(CommandHandler("import", self.handle_import, filters.ALL))
         self.app.add_handler(CommandHandler("analytics", self.handle_analytics, filters.ALL))
+        self.app.add_handler(CommandHandler("append", self.handle_append, filters.ALL))
         self.app.add_handler(MessageHandler(filters.ALL, self.handle_import_file))
 
     def run(self):
@@ -102,6 +106,31 @@ class PesunBot:
         response = await response.edit_text(f"⏱️  Starting dash app...")
         plotterData = await PlotterPool.get_instance().get_plotter(update.effective_chat.id, analytics)
         response = await response.edit_text(f"📊  Link to analytics:\n\n{os.getenv("DASH_LINK")}:{os.getenv("DASH_PORT")}{plotterData.path}")
+
+    async def handle_append(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        deltaInstance: DeltaInstance = None
+        try:
+            args = update.message.text.split()[1:]
+            user = args[0]
+            delta = int(args[1])
+            timestamp = datetime.now(timezone.utc)
+            deltaInstance = DeltaInstance(
+                user=user,
+                delta=delta,
+                timestamp=timestamp,
+            )
+        except Exception:
+            await update.message.reply_text("❌  Bad message!")
+            logger.error("WTF error", exc_info=True)
+            return
+        response = await update.message.reply_text("⏱️  Appending into database")
+        db = await Database.get_instance()
+        result = await db.append_delta(update.effective_chat.id, deltaInstance)
+        if not result:
+            response = await response.edit_text("❌  Something went wrong while appending into database")
+            return
+        response = await response.edit_text("✅  Successfuly appended delta into db")
+        return
 
     async def stop_async(self):
         await PlotterPool.get_instance().stop_plotters()

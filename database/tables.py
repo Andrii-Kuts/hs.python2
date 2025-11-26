@@ -79,7 +79,7 @@ class BestPlayerHistory(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str]
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
 class UserStreak(Base):
     __tablename__ = "user_streak"

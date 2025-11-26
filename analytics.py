@@ -78,7 +78,7 @@ class Analytics:
                     self.best_rank[user] = rank
                 
         if cur_best is not None:
-            self.best_players_history.append((cur_best, cur_start, datetime.now(timezone.utc)))
+            self.best_players_history.append((cur_best, cur_start, None))
         logger.info(f"[Analytics] Best players history is done!")
 
     def __calculate_streaks(self, dataset: Dataset):
@@ -186,7 +186,12 @@ class Analytics:
         return result
     
     def get_best_players_history(self):
-        return self.best_players_history
+        history = self.best_players_history
+        if history is None or len(history) == 0:
+            return history
+        history = list(history)
+        history[-1] = (history[-1][0], history[-1][1], datetime.now(timezone.utc))
+        return history
     
     def get_user_streaks(self, user: str) -> list[tuple[datetime, datetime, int]]:
         return self.streaks.get(user)
@@ -199,7 +204,7 @@ class Analytics:
     
     def get_user_domination_durations(self) -> dict[str, timedelta]:
         durations = {}
-        for entry in self.best_players_history:
+        for entry in self.get_best_players_history():
             user = entry[0]
             duration = entry[2]-entry[1]
             total_duration = durations.get(user, timedelta()) + duration

@@ -117,16 +117,33 @@ class Analytics:
             close_streak(user)
         logger.info(f"[Analytics] Streaks are done!")
 
-    def __init__(self, dataset: Dataset):
+    def __init__(
+        self,
+        users: list[str] = [],
+        user_length_histories: dict[str,list[tuple[datetime, int]]] = {},
+        user_deltas: dict[str, list[tuple[datetime, int]]] = {},
+        best_players_history: list[tuple[str, datetime, datetime]] = [],
+        streaks: dict[str, list[tuple[datetime, datetime, int]]] = {},
+    ):
+        self.users = set(users)
+        self.user_length_histories = user_length_histories
+        self.user_deltas = user_deltas
+        self.best_players_history = best_players_history
+        self.streaks = streaks
+
+    @classmethod
+    def from_dataset(cls, dataset: Dataset):
         deltas = dataset.deltas
         logger.info(f"[Analytics] Starting building analytics from {len(deltas)} deltas")
-        self.__list_users(dataset)
-        self.__check_deltas(dataset)
-        self.__calculate_user_length_histories(dataset)
-        self.__calculate_user_deltas(dataset)
-        self.__calculate_best_players_history(dataset)
-        self.__calculate_streaks(dataset)
+        analytics = Analytics()
+        analytics.__list_users(dataset)
+        analytics.__check_deltas(dataset)
+        analytics.__calculate_user_length_histories(dataset)
+        analytics.__calculate_user_deltas(dataset)
+        analytics.__calculate_best_players_history(dataset)
+        analytics.__calculate_streaks(dataset)
         logger.info(f"[Analytics] Done buildng all analytics")
+        return analytics
 
     def get_users(self) -> set[str]:
         return self.users
@@ -190,4 +207,4 @@ class Analytics:
         return durations
     
 def build_analytics(dataset: Dataset) -> Analytics:
-    return Analytics(dataset)
+    return Analytics.from_dataset(dataset)

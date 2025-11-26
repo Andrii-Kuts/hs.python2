@@ -4,7 +4,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Appli
 import os
 from dotenv import load_dotenv
 from parse_archive import parse_zip
-from database import Database
+from database.database import Database
 import uuid
 from analytics import Analytics
 from plotter import PlotterPool
@@ -74,26 +74,31 @@ class PesunBot:
         if dataset is None:
             response = await response.edit_text("❌  Could not parse the file. Are you sure its a correct zip archive?")
             return
+        response = await response.edit_text(f"⏱️  Writing into database")
         db = await Database.get_instance()
         result = await db.import_dataset(update.effective_chat.id, dataset)
-        if result:
-            response = await response.edit_text(f"✅  File '{document.file_name}' received and saved!")
-        else:
-            response = await response.edit_text("❌  Something went wrong while parsing the archive")
+        if not result:
+            response = await response.edit_text("❌  Something went wrong while writing into database")
+            return
+        response = await response.edit_text(f"⏱️  Building analytics")
+        analytics = Analytics.from_dataset(dataset)
+        result = await db.write_analytics(update.effective_chat.id, analytics)
+        if not result:
+            response = await response.edit_text("❌  Something went wrong while building analytics")
+            return
+        response = await response.edit_text(f"✅  Archive has been successfuly imported!")
 
     async def handle_import(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         self.import_users.add((update.effective_user.id, update.effective_chat.id))
         await update.message.reply_text(f"Now send the zip archive")
 
     async def handle_analytics(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        response = await update.message.reply_text(f"⏱️  Reading the dataset...")
+        response = await update.message.reply_text(f"⏱️  Reading the analytics...")
         db = await Database.get_instance()
-        dataset = await db.read_dataset(update.effective_chat.id)
-        if dataset is None:
-            response = await response.edit_text("❌  Something went wrong while reading the dataset. Are you sure you've imported an archive?")
+        analytics = await db.read_analytics(update.effective_chat.id)
+        if analytics is None:
+            response = await response.edit_text("❌  Something went wrong while reading analytics. Are you sure you've imported an archive?")
             return
-        response = await response.edit_text(f"⏱️  Building analytics...")
-        analytics = Analytics(dataset)
         response = await response.edit_text(f"⏱️  Starting dash app...")
         plotterData = await PlotterPool.get_instance().get_plotter(update.effective_chat.id, analytics)
         response = await response.edit_text(f"📊  Link to analytics:\n\n{os.getenv("DASH_LINK")}:{os.getenv("DASH_PORT")}{plotterData.path}")

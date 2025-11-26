@@ -5,7 +5,7 @@ from user_options import read_options
 from dataset import get_dataset
 import plotter
 from dotenv import load_dotenv
-import database
+import database.database as database
 import asyncio
 from bot import PesunBot
 

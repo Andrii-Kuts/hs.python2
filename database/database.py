@@ -374,7 +374,7 @@ class Database:
                         .where((table.GroupUser.group_id == group_id) &
                             (table.GroupUser.user_id == user_id))
                     )).scalar_one_or_none()
-                    return group_user
+                    return group_user.username
         except Exception:
             return None
         

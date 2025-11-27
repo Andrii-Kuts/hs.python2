@@ -23,11 +23,11 @@ class PesunBot:
     def __init__(self):
         self.import_users: set[tuple[int, int]] = set()
         self.requested_usernames: dict[tuple[int, str], PesunBot.RequestedUsernameInfo] = dict()
+        self.usernames: dict[str, int] = {}
         self.app = ApplicationBuilder().token(os.getenv("TELEGRAM_BOT_KEY")).post_init(self.init_bot).build()
 
         self.app.add_handler(CommandHandler("import", self.handle_import, filters.ALL))
         self.app.add_handler(CommandHandler("analytics", self.handle_analytics, filters.ALL))
-        self.app.add_handler(CommandHandler("append", self.handle_append, filters.ALL))
         self.app.add_handler(MessageHandler(filters.ALL, self.handle_chat_message))
 
     def run(self):
@@ -76,10 +76,21 @@ class PesunBot:
             if not result:
                 logger.warning("Warning! Couldn't append delta")
         
-        if parse_message_result.username is None:
-            await self.request_username(message.chat, parse_message_result.user_handle, append_delta)
-        else:
+        if parse_message_result.username is not None:
             await append_delta(parse_message_result.username)
+            return
+        
+        user_id = self.usernames.get(parse_message_result.user_handle)
+        if user_id is None:
+            logger.warning(f"Warning! User is unknown for handle = {parse_message_result.user_handle}")
+            await self.request_username(message.chat, parse_message_result.user_handle, append_delta)
+            return
+        db = await Database.get_instance()
+        username = await db.get_username(message.chat.id, user_id)
+        if username is not None:
+            await append_delta(username)
+        else:
+            await self.request_username(message.chat, parse_message_result.user_handle, append_delta)
 
     async def handle_username_provided(self, message: Message, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = message.chat.id
@@ -89,8 +100,10 @@ class PesunBot:
         reply_id = message.reply_to_message.id if message.reply_to_message else None
         if reply_id != info.message_id:
             return
-        user = message.text
-        await info.callback(user)
+        username = message.text
+        db = await Database.get_instance()
+        await db.set_username(chat_id, message.from_user.id, username)
+        await info.callback(username)
         self.requested_usernames.pop(key)
 
     async def handle_response_message(self, message: Message, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -102,6 +115,7 @@ class PesunBot:
         return
 
     async def handle_chat_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        self.usernames[update.effective_user.username] = update.effective_user.id
         user_id = (update.effective_user.id, update.effective_chat.id)
         if user_id in self.import_users:
             await self.handle_import_file(self, update, context)

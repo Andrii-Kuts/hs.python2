@@ -24,21 +24,8 @@ class Group(Base):
     __tablename__ = "groups"
     
     id: Mapped[int] = mapped_column(primary_key=True)
-    events: Mapped[List["Event"]] = relationship(back_populates="group")
+    events: Mapped[List["Event"]] = relationship(back_populates="group", order_by=Event.time)
     analytics: Mapped["Analytics"] = relationship(back_populates="group")
-
-class Analytics(Base):
-    __tablename__ = "analytics"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
-    group: Mapped["Group"] = relationship(back_populates="analytics")
-
-    users: Mapped[List["AnalyticsUser"]] = relationship(back_populates="analytics")
-    user_length_history: Mapped[List["UserLengthHistory"]] = relationship(back_populates="analytics")
-    user_delta_history: Mapped[List["UserDeltaHistory"]] = relationship(back_populates="analytics")
-    best_player_history: Mapped[List["BestPlayerHistory"]] = relationship(back_populates="analytics")
-    user_streaks: Mapped[List["UserStreak"]] = relationship(back_populates="analytics")
 
 class AnalyticsUser(Base):
     __tablename__ = "analytics_user"
@@ -92,3 +79,16 @@ class UserStreak(Base):
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     days_count: Mapped[int]
+
+class Analytics(Base):
+    __tablename__ = "analytics"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"))
+    group: Mapped["Group"] = relationship(back_populates="analytics")
+
+    users: Mapped[List["AnalyticsUser"]] = relationship(back_populates="analytics")
+    user_length_history: Mapped[List["UserLengthHistory"]] = relationship(back_populates="analytics", order_by=UserLengthHistory.time)
+    user_delta_history: Mapped[List["UserDeltaHistory"]] = relationship(back_populates="analytics", order_by=UserDeltaHistory.time)
+    best_player_history: Mapped[List["BestPlayerHistory"]] = relationship(back_populates="analytics", order_by=BestPlayerHistory.start_time)
+    user_streaks: Mapped[List["UserStreak"]] = relationship(back_populates="analytics", order_by=UserStreak.start_time)

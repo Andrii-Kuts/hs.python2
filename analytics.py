@@ -121,12 +121,14 @@ class Analytics:
         self,
         users: list[str] = [],
         user_length_histories: dict[str,list[tuple[datetime, int]]] = {},
+        best_rank: dict[str,int] = {},
         user_deltas: dict[str, list[tuple[datetime, int]]] = {},
         best_players_history: list[tuple[str, datetime, datetime]] = [],
         streaks: dict[str, list[tuple[datetime, datetime, int]]] = {},
     ):
         self.users = set(users)
         self.user_length_histories = user_length_histories
+        self.best_rank = best_rank
         self.user_deltas = user_deltas
         self.best_players_history = best_players_history
         self.streaks = streaks
@@ -149,19 +151,19 @@ class Analytics:
         return self.users
 
     def get_user_length(self, user: str) -> int:
-        history = self.user_length_histories.get(user)
-        if history is None:
+        history = self.user_length_histories.get(user, [])
+        if history is None or len(history) == 0:
             return 0
         return history[-1][1] if len(history) > 0 else 0
     
     def get_user_length_history(self, user: str) -> list[tuple[datetime, int]]:
-        return self.user_length_histories[user]
+        return self.user_length_histories.get(user, [])
     
     def get_user_best_rank(self, user: str) -> int:
-        return self.best_rank[user]
+        return self.best_rank.get(user, 0)
     
     def get_user_events_count(self, user: str) -> int:
-        return len(self.user_deltas.get(user))
+        return len(self.user_deltas.get(user, []))
     
     def get_user_average_interval(self, user: str) -> timedelta:
         deltas = self.get_user_deltas(user)
@@ -174,10 +176,13 @@ class Analytics:
         return duration / count
         
     def get_user_best_streak(self, user: str) -> tuple[datetime, datetime, int]:
-        return max(self.streaks.get(user), key=lambda streak: streak[2])
+        streaks = self.streaks.get(user, [])
+        if len(streaks) == 0:
+            return (None, None, 0)
+        return max(streaks, key=lambda streak: streak[2])
 
     def get_user_deltas(self, user: str) -> list[tuple[datetime, int]]:
-        return self.user_deltas.get(user)
+        return self.user_deltas.get(user, [])
     
     def get_all_deltas(self) -> list[tuple[str, datetime, int]]:
         result = []
@@ -194,10 +199,13 @@ class Analytics:
         return history
     
     def get_user_streaks(self, user: str) -> list[tuple[datetime, datetime, int]]:
-        return self.streaks.get(user)
+        return self.streaks.get(user, [])
     
     def get_user_current_streak(self, user: str) -> int:
-        streak = self.streaks.get(user)[-1]
+        streaks = self.get_user_streaks(user)
+        if len(streaks) == 0:
+            return 0
+        streak = streaks[-1]
         deadline = next_pesun_date(streak[1])
         now = datetime.now(timezone.utc)
         return streak[2] if now <= deadline else 0

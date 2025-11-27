@@ -1,51 +1,26 @@
+import asyncio
 import socket
-import time
+import threading
 from wsgiref.simple_server import WSGIServer, make_server
-import requests
 from analytics import Analytics
 import dash
-from dash import dcc, html, Input, Output, Dash
-import plotly.express as px
+from dash import dcc, html, Input, Output, Dash, State
 import plotly.io as pio
 import plotly.graph_objects as go
-import pandas as pd
 import os
 from utils import *
-from plotly.colors import sample_colorscale, sequential
-import numpy as np
 from threading import Thread
 from asyncio import Future, get_running_loop
-from flask import request
 from utils import hash_group_id
-import signal
+from database.database import Database
+from plots import *
 
-def current_length(analytics: Analytics):
-    users = sorted([(user, analytics.get_user_length(user)) for user in analytics.get_users()], key = lambda entry : entry[1])
-    x = list(map(lambda user : user[0], users))
-    y = list(map(lambda user : user[1], users))
-    df = pd.DataFrame({
-        "User": x,
-        "Length": y,
-    })
-    fig=px.bar(
-        df,
-        x="User",
-        y="Length",
-        color_discrete_sequence=["DeepSkyBlue"],
-        title="Length by User",
-    )
-    return html.Div([
-        dcc.Graph(figure=fig),
-    ])
-
-def user_dropdown(analytics: Analytics):
-    users = sorted(list(analytics.get_users()))
+def user_dropdown():
     return html.Div([
         html.H4("Select User"),
         dcc.Dropdown(
             id="user_dropdown",
-            options=users,
-            value=users[0],
+            options=[],
             clearable=False,
             style={
                 "fontFamily": "Avenir Next",
@@ -61,67 +36,43 @@ def user_dropdown(analytics: Analytics):
         "padding": "20px"
     })
 
-def best_player_history(analytics: Analytics):
-    history = analytics.get_best_players_history()
-    def entry_duration(entry):
-        return format_duration(entry[2] - entry[1])
-    df = pd.DataFrame({
-        "User": list(map(lambda entry : entry[0], history)),
-        "Start": pd.to_datetime(list(map(lambda entry : entry[1], history)), utc=True),
-        "End": pd.to_datetime(list(map(lambda entry : entry[2], history)), utc=True),
-        "Period": list(range(1, len(history) + 1)),
-        "Duration": list(map(entry_duration, history)),
-    })
-    fig = px.timeline(
-        df,
-        x_start="Start",
-        x_end="End",
-        y="Period",
-        color="User",
-        title="Best Player History",
-        hover_data={"User": True, "Start": True, "End": True, "Duration": True, "Period": False},
-    )
-    return html.Div([
-        dcc.Graph(figure=fig),
-    ])
-
-def user_statistics(analytics: Analytics):
+def user_statistics():
     def length_history():
-        return dcc.Graph(id="user_length_history")
+        return dcc.Graph(id=UserPlots.LengthHistoryPlot.get_id())
     
     def numeric_statistics():
         return html.Div([
             html.Div([
                     html.Div("Best Rank", className="numeric-statistic-title"),
-                    html.Div(id="user_best_rank", className="numeric-statistic-value"),
+                    html.Div(id=UserPlots.BestRankPlot.get_id(), className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
                 style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Games Count", className="numeric-statistic-title"),
-                    html.Div(id="user_events", className="numeric-statistic-value"),
+                    html.Div(id=UserPlots.GamesCountPlot.get_id(), className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
                 style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Avg. Interval", className="numeric-statistic-title"),
-                    html.Div(id="user_average_interval", className="numeric-statistic-value"),
+                    html.Div(id=UserPlots.AverageIntervalPlot.get_id(), className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
                 style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Longest Streak", className="numeric-statistic-title"),
-                    html.Div(id="user_longest_streak", className="numeric-statistic-value"),
+                    html.Div(id=UserPlots.BestStreakPlot.get_id(), className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
                 style={"flex": "1", "color": "DeepSkyBlue"},
             ),
             html.Div([
                     html.Div("Current Streak", className="numeric-statistic-title"),
-                    html.Div(id="user_current_streak", className="numeric-statistic-value"),
+                    html.Div(id=UserPlots.CurrentStreakPlot.get_id(), className="numeric-statistic-value"),
                 ],
                 className="numeric-statistic",
                 style={"flex": "1", "color": "DeepSkyBlue"},
@@ -139,21 +90,21 @@ def user_statistics(analytics: Analytics):
         return html.Div([
             html.Div(
                 dcc.Graph(
-                    id="user_events_day",
+                    id=UserPlots.GamesByDay.get_id(),
                     style={"height": "100%", "width": "100%"},  
                 ),
                 style={"flex": "1"},
             ),
             html.Div(
                 dcc.Graph(
-                    id="user_events_time",
+                    id=UserPlots.GamesByHour.get_id(),
                     style={"height": "100%", "width": "100%"},  
                 ),
                 style={"flex": "1"},
             ),
             html.Div(
                 dcc.Graph(
-                    id="user_events_delta",
+                    id=UserPlots.GamesByDelta.get_id(),
                     style={"height": "100%", "width": "100%"},  
                 ),
                 style={"flex": "1"},
@@ -168,151 +119,26 @@ def user_statistics(analytics: Analytics):
 
     return html.Div([
         html.H2("User Statistics"),
-        user_dropdown(analytics),
+        user_dropdown(),
         length_history(),
         numeric_statistics(),
         event_statistics(),
     ])
 
-def top_player_pie_figure(analytics: Analytics):
-    durations = analytics.get_user_domination_durations()
-    df = pd.DataFrame({
-        "User": list(map(lambda entry: entry[0], durations.items())),
-        "Duration": list(map(lambda entry: entry[1].total_seconds(), durations.items())),
-        "DurationHuman": list(map(lambda entry: format_duration(entry[1]), durations.items())),
-    })
-    fig = px.pie(
-        df,
-        values="Duration",
-        names="User",
-        custom_data=["DurationHuman"],
-        title="Duration as Best Player"
-    )
-    fig.update_traces(
-        hovertemplate="User: %{label}<br>Duration: %{customdata[0]}",
-    )
-    fig.update_layout(
-        showlegend=False,
-    )
-    return fig
-
-def events_pie_figure(analytics: Analytics):
-    events = analytics.get_all_deltas()
-    df = pd.DataFrame({
-        "User": list(map(lambda entry: entry[0], events)),
-    })
-    df_counts = df.value_counts("User").reset_index()
-    df_counts.columns = ["User", "Count"]
-    fig = px.pie(
-        df_counts,
-        names="User",
-        values="Count",
-        title="Games Count"
-    )
-    fig.update_layout(
-        showlegend=False,
-    )
-    fig.update_traces(
-        textposition="inside",
-    )
-    return fig
-
-def user_rankings_panel(analytics: Analytics):
-    def average_interval():
-        users = analytics.get_users()
-        average_intervals = list(map(lambda user: (user, analytics.get_user_average_interval(user)), users))
-        average_intervals = sorted(filter(lambda entry: entry[1].total_seconds() > 0, average_intervals), key=lambda entry: entry[1], reverse=True)
-        df = pd.DataFrame({
-            "User": list(map(lambda entry: entry[0], average_intervals)),
-            "Days": list(map(lambda entry: entry[1].total_seconds() / (24*60*60), average_intervals)),
-            "DaysLog": list(map(lambda entry: np.log10(entry[1].total_seconds() / (24*60*60)), average_intervals)),
-        })
-        fig = px.bar(
-            df,
-            y="User",
-            x="Days",
-            title="Average Interval",
-            orientation="h",
-            log_x=True,
-            color="DaysLog",
-            color_continuous_scale=sequential.Aggrnyl_r,
-            hover_data={"User": True, "Days": True, "DaysLog": False},
-        )
-        fig.update_layout(coloraxis_showscale=False)
-        return dcc.Graph(
-            figure=fig,
-            style={"height": "100%", "width": "100%"},
-            config={"responsive": True}
-        )
-    
-    def longest_streak():
-        users = analytics.get_users()
-        longest_streaks = list(map(lambda user: (user, analytics.get_user_best_streak(user)), users))
-        longest_streaks = sorted(longest_streaks, key=lambda entry: entry[1][2])
-        df = pd.DataFrame({
-            "User": list(map(lambda entry: entry[0], longest_streaks)),
-            "Duration": list(map(lambda entry: entry[1][2], longest_streaks)),
-            "Start": list(map(lambda entry: format_date(entry[1][0]), longest_streaks)),
-            "End": list(map(lambda entry: format_date(entry[1][1]), longest_streaks)),
-        })
-        fig = px.bar(
-            df,
-            y="User",
-            x="Duration",
-            title="Longest Streak",
-            orientation="h",
-            color="Duration",
-            color_continuous_scale=sequential.Aggrnyl,
-            hover_data=["User", "Duration", "Start", "End"],
-        )
-        fig.update_layout(coloraxis_showscale=False)
-        return dcc.Graph(
-            figure=fig,
-            style={"height": "100%", "width": "100%"},
-            config={"responsive": True}
-        )
-    
-    def current_streak():
-        users = analytics.get_users()
-        current_streaks = list(map(lambda user: (user, analytics.get_user_current_streak(user)), users))
-        current_streaks = sorted(filter(lambda entry: entry[1] > 0, current_streaks), key=lambda entry: entry[1])
-        df = pd.DataFrame({
-            "User": list(map(lambda entry: entry[0], current_streaks)),
-            "Duration": list(map(lambda entry: entry[1], current_streaks)),
-        })
-        fig = px.bar(
-            df,
-            y="User",
-            x="Duration",
-            title="Current Streak",
-            orientation="h",
-            color="Duration",
-            color_continuous_scale=sequential.Aggrnyl,
-        )
-        fig.update_layout(coloraxis_showscale=False)
-        return dcc.Graph(
-            figure=fig,
-            style={"height": "100%", "width": "100%"},
-            config={"responsive": True}
-        )
-
+def user_rankings_panel():
     def left_panel():
         return html.Div([
             html.Div(
                 dcc.Graph(
-                    figure=top_player_pie_figure(analytics),
+                    id=TopPlayerPiePlot.get_id(),
                     style={"height": "100%", "width": "100%"},
-                    config={"responsive": True},
-                    id="top_player_pie",
                 ),
                 style={"flex": "1", "height": "50%", "aspect-ratio": "1"},
             ),
             html.Div(
                 dcc.Graph(
-                    figure=events_pie_figure(analytics),
+                    id=GamesPiePlot.get_id(),
                     style={"height": "100%", "width": "100%"},
-                    config={"responsive": True},
-                    id="events_pie",
                 ),
                 style={"flex": "1", "height": "50%", "aspect-ratio": "1"},
             ),
@@ -328,15 +154,24 @@ def user_rankings_panel(analytics: Analytics):
     def right_panel():
         return html.Div([
             html.Div(
-                average_interval(),
+                dcc.Graph(
+                    id=RankingPlots.AverageIntervalPlot.get_id(),
+                    style={"height": "100%", "width": "100%"},
+                ),
                 style={"flex": "1"},
             ),
             html.Div(
-                longest_streak(),
+                dcc.Graph(
+                    id=RankingPlots.LongestStreakPlot.get_id(),
+                    style={"height": "100%", "width": "100%"},
+                ),
                 style={"flex": "1"},
             ),
             html.Div(
-                current_streak(),
+                dcc.Graph(
+                    id=RankingPlots.CurrentStreakPlot.get_id(),
+                    style={"height": "100%", "width": "100%"},
+                ),
                 style={"flex": "1"},
             ),
         ], style={
@@ -361,12 +196,13 @@ def user_rankings_panel(analytics: Analytics):
         }),
     ])
 
-def run(path: str, analytics: Analytics):
+def run(path: str, group_id: int):
     app = dash.Dash(__name__, routes_pathname_prefix=path, requests_pathname_prefix=path)
     pio.templates["fonts"] = go.layout.Template(
         layout=go.Layout(title_font=dict(family="Avenir Next", size=24))
     )
     pio.templates.default = 'plotly_dark+fonts'
+
     app.layout = html.Div([
        html.H1(
         "Pesun Analytics",
@@ -374,117 +210,69 @@ def run(path: str, analytics: Analytics):
             "marginTop": "20px",
             "marginBottom": "40px",
         }),
-        dcc.Interval(id="refresh", interval=100, n_intervals=0, max_intervals=1),
-        current_length(analytics),
-        best_player_history(analytics),
-        user_statistics(analytics),
-        user_rankings_panel(analytics),
+        dcc.Interval(id="refresh", interval=500, n_intervals=0, max_intervals=-1),
+        dcc.Store(id='last_update', data=-1),
+        dcc.Store(id='last_user_update', data=-1),
+        dcc.Graph(id=CurrentLengthPlot.get_id()),
+        dcc.Graph(id=BestPlayerHistoryPlot.get_id()),
+        user_statistics(),
+        user_rankings_panel(),
     ])
-    @app.callback(
-        Output("user_length_history", "figure"),
-        Input("user_dropdown", "value"))
-    def update_user_length(user: str):
-        history = analytics.get_user_length_history(user)
-        df = pd.DataFrame({
-            "Date": list(map(lambda entry: entry[0], history)),
-            "Length": list(map(lambda entry: entry[1], history)),
-        })
-        fig = px.line(df, x="Date", y="Length", title=f"{user}'s Length History")
-        streaks = list(filter(lambda streak: streak[2] > 1, analytics.get_user_streaks(user)))
-        count = 10
-        streaks = sorted(streaks, key=lambda streak: streak[2], reverse=True)[:count]
-        for i in range(len(streaks)):
-            streak = streaks[i]
-            color = sample_colorscale(sequential.Aggrnyl_r, i / (count-1), colortype="hex")[0]
-            color = f"rgb({color[0]},{color[1]},{color[2]})"
-            name = f"Streak #{i+1}"
-            fig.add_trace(
-                go.Scatter(
-                    x=[streak[0], streak[1]],
-                    y=[0, 0],
-                    mode="lines",
-                    line=dict(color=color, width=10),
-                    hoverinfo="text",
-                    text=f"{name}<br>Duration: {format_plural(streak[2], "day")}<br>Start: {format_date(streak[0])}<br>End: {format_date(streak[1])}",
-                    name=name
-                )
-            )
-        return fig
 
+    update_counter = 0
+    analytics: Analytics = None
+    lock = threading.Lock()
+
+    def get_analytics():
+        event_loop = Database.get_event_loop()
+        db = asyncio.run_coroutine_threadsafe(Database.get_instance(), event_loop).result()
+        analytics = asyncio.run_coroutine_threadsafe(db.read_analytics(group_id), event_loop).result()
+        return analytics
+
+    outputs = [Output("last_update", "data"), Output("last_user_update", "data"), Output("user_dropdown", "value"), Output("user_dropdown", "options")] + \
+        [Output(plot.get_id(), plot.output_type()) for plot in get_non_user_plots()]
     @app.callback(
-        Output("user_best_rank", "children"),
-        Output("user_events", "children"),
-        Output("user_average_interval", "children"),
-        Output("user_longest_streak", "children"),
-        Output("user_current_streak", "children"),
-        Input("user_dropdown", "value"))
-    def update_user_numerics(user: str):
-        best_rank = analytics.get_user_best_rank(user)
-        events_count = analytics.get_user_events_count(user)
-        average_interval = analytics.get_user_average_interval(user)
-        interval_days = round(average_interval.total_seconds() / (60 * 60 * 24), 2)
-        best_streak = analytics.get_user_best_streak(user)[2]
-        current_streak = analytics.get_user_current_streak(user)
-        return f"#{best_rank}", events_count, f"{interval_days} days", format_plural(best_streak, "day"), format_plural(current_streak, "day")
-    
-    @app.callback(
-        Output("user_events_day", "figure"),
-        Output("user_events_time", "figure"),
-        Output("user_events_delta", "figure"),
-        Input("user_dropdown", "value"))
-    def update_user_events(user: str):
-        deltas = analytics.get_user_deltas(user)
-        df = pd.DataFrame({
-            "Date": list(map(lambda entry: entry[0], deltas)),
-            "Delta": list(map(lambda entry: entry[1], deltas)),
-        })
-        df_day = pd.DataFrame({
-            "Day": df["Date"].dt.day_name()
-        })
-        df_hour = pd.DataFrame({
-            "Hour": df["Date"].dt.hour,
-        })
-        df_delta = pd.DataFrame({
-            "Delta": df["Delta"]
-        })
-        fig_day = px.histogram(
-            df_day,
-            x="Day",
-            category_orders={"Day": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]},
-            title=f"Events by Day",
-            color_discrete_sequence=["DeepSkyBlue"],
-        )
-        fig_time = px.histogram(
-            df_hour,
-            x="Hour",
-            title=f"Events by Hour",
-            color_discrete_sequence=["DeepSkyBlue"],
-            nbins=24,
-        )
-        fig_time.update_traces(
-            hovertemplate="Interval: %{x:02d}:00 - %{customdata:02d}:00<br>Count: %{y}<extra></extra>",
-            customdata=[(h + 1) % 24 for h in range(24)],
-        )
-        fig_delta = px.histogram(
-            df_delta,
-            x="Delta",
-            title=f"Events by Delta",
-            color_discrete_sequence=["DeepSkyBlue"],
-            nbins=16
-        )
-        return fig_day, fig_time, fig_delta
-    
-    @app.callback(
-        Output("top_player_pie", "figure"),
-        Output("events_pie", "figure"),
-        Input("refresh", "n_intervals")
+        outputs,
+        Input("refresh", "n_intervals"),
+        State("last_update", "data"),
+        State("user_dropdown", "value"),
+        State("user_dropdown", "options"),
     )
-    def refresh_pie(n):
-        if n > 1:
-            return dash.no_update
-        fig_top_player = top_player_pie_figure(analytics)
-        fig_events = events_pie_figure(analytics)
-        return fig_top_player, fig_events
+    def refresh(n_intervals, last_update, selected_user: str, user_options: list[str]):
+        with lock:
+            if update_counter > last_update:
+                print("UPDATE")
+                nonlocal analytics
+                analytics = get_analytics()
+                if analytics is None:
+                    logger.error("Something went wrong while refreshing analytics")
+                new_users = sorted(analytics.get_users())
+                new_selected_user = selected_user
+                if selected_user is None or selected_user not in new_users:
+                    new_selected_user = new_users[0] if len(new_users) > 0 else None
+                plotsData = PlotsData(analytics, new_selected_user)
+                return update_counter, update_counter, new_selected_user, new_users, *[plot.create(plotsData) for plot in get_non_user_plots()]
+        raise dash.exceptions.PreventUpdate
+    
+    dropdown_outputs = [Output(plot.get_id(), plot.output_type()) for plot in UserPlots.get_all_plots()]
+    @app.callback(
+        dropdown_outputs,
+        Input("last_user_update", "data"),
+        Input("user_dropdown", "value"),
+    )
+    def refresh_user(last_user_update, selected_user: str):
+        print("UPDATE USERS")
+        plotsData = PlotsData(analytics, selected_user)
+        return tuple([plot.create(plotsData) for plot in UserPlots.get_all_plots()])
+    
+    @app.server.route(f"{path}update", methods=["POST"])
+    def update_plots():
+        nonlocal lock
+        nonlocal update_counter
+        with lock:
+            update_counter += 1
+            return "OK", 200
+        return "Failed", 400
     
     is_debug = os.getenv("DEBUG") == "TRUE"
     host = os.getenv("DASH_HOST")
@@ -536,14 +324,14 @@ class PlotterPool:
         thread.start()
         return future
 
-    def start_plotter(self, group_id: int, analytics: Analytics):
+    def start_plotter(self, group_id: int):
         path = f"/{hash_group_id(group_id)}/"
-        app, server, thread = run(path, analytics)
+        app, server, thread = run(path, group_id)
         return PlotterData(app, server, thread, path)
     
-    async def get_plotter(self, group_id: int, analytics: Analytics):
+    async def get_plotter(self, group_id: int):
         await self.stop_plotter(group_id)
-        plotterData = self.start_plotter(group_id, analytics)
+        plotterData = self.start_plotter(group_id)
         self.plotters[group_id] = plotterData
         return plotterData
     

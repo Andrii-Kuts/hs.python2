@@ -1,3 +1,4 @@
+import asyncio
 from sqlalchemy import DateTime, ForeignKey, select, delete, insert, desc, func
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine, AsyncSession
 from typing import Optional, List
@@ -12,13 +13,19 @@ from utils import *
 
 class Database:
     _instance: Database = None
+    _event_loop = None
 
     @classmethod
     async def get_instance(cls) -> Database:
         if cls._instance is None:
             cls._instance = Database()
             await cls._instance._initialize()
+            cls._event_loop = asyncio.get_event_loop()
         return cls._instance
+    
+    @classmethod
+    def get_event_loop(cls):
+        return cls._event_loop
 
     def __init__(self):
         db_endpoint = os.getenv("DATABASE_ENDPOINT")
@@ -181,7 +188,13 @@ class Database:
                             streaks[user] = []
                         streaks[user].append((streak.start_time, streak.end_time, streak.days_count))
 
-                    analytics = Analytics(users, user_length_histories, user_deltas, best_players_history, streaks)
+                    analytics = Analytics(
+                        users=users,
+                        user_length_histories=user_length_histories,
+                        user_deltas=user_deltas,
+                        best_players_history=best_players_history,
+                        streaks=streaks
+                    )
                     return analytics
         except Exception as e:
             logger.error("[Database] Error while reading analytics", exc_info=True)
@@ -218,11 +231,11 @@ class Database:
                         .where((table.AnalyticsUser.analytics_id == analytics_id) & (table.AnalyticsUser.username == user))
                     )).scalar_one_or_none()
                     if existing_user is None:
-                        user = table.AnalyticsUser(
+                        new_user = table.AnalyticsUser(
                             analytics_id=analytics_id,
                             username=user,
                         )
-                        session.add(user)
+                        session.add(new_user)
                     
                     # Length history
                     last_length_record = (await session.execute(

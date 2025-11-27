@@ -97,14 +97,14 @@ class PesunBot:
         await update.message.reply_text(f"Now send the zip archive")
 
     async def handle_analytics(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        response = await update.message.reply_text(f"⏱️  Reading the analytics...")
-        db = await Database.get_instance()
-        analytics = await db.read_analytics(update.effective_chat.id)
-        if analytics is None:
-            response = await response.edit_text("❌  Something went wrong while reading analytics. Are you sure you've imported an archive?")
-            return
-        response = await response.edit_text(f"⏱️  Starting dash app...")
-        plotterData = await PlotterPool.get_instance().get_plotter(update.effective_chat.id, analytics)
+        response = await update.message.reply_text(f"⏱️  Starting app...")
+        # db = await Database.get_instance()
+        # analytics = await db.read_analytics(update.effective_chat.id)
+        # if analytics is None:
+        #     response = await response.edit_text("❌  Something went wrong while reading analytics. Are you sure you've imported an archive?")
+        #     return
+        # response = await response.edit_text(f"⏱️  Starting dash app...")
+        plotterData = await PlotterPool.get_instance().get_plotter(update.effective_chat.id)
         response = await response.edit_text(f"📊  Link to analytics:\n\n{os.getenv("DASH_LINK")}:{os.getenv("DASH_PORT")}{plotterData.path}")
 
     async def handle_append(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

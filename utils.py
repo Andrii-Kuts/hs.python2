@@ -73,6 +73,7 @@ def format_duration(duration: timedelta):
     return " ".join(parts) or "0 seconds"
 
 def hash_group_id(id: int) -> str:
+    id %= (2**64)
     letters_set = string.ascii_letters
     res = ""
     while id > 0:

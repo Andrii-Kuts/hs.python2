@@ -68,7 +68,6 @@ class BestPlayerHistoryPlot(FigurePlot):
     def create(cls, plotsData):
         analytics = plotsData.analytics
         history = analytics.get_best_players_history()
-        print(history[-1])
         def entry_duration(entry):
             return format_duration(entry[2] - entry[1])
         df = pd.DataFrame({

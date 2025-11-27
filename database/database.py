@@ -47,7 +47,7 @@ class Database:
                 async with session.begin():
                     group = await session.get(table.Group, group_id)
                     if group is None:
-                        group = table.Group(id=group_id)
+                        group = table.Group(id=group_id, analytics=table.Analytics())
                         session.add(group)
                     await session.execute(delete(table.Event).where(table.Event.group_id == group.id))
                     events = [table.Event(
@@ -221,8 +221,9 @@ class Database:
                     # Group
                     group = await session.get(table.Group, group_id, options=[selectinload(table.Group.analytics)])
                     if group is None:
-                        group = table.Group(id=group_id)
+                        group = table.Group(id=group_id, analytics=table.Analytics())
                         session.add(group)
+                        await session.flush()
 
                     # Event
                     event = table.Event(
@@ -346,7 +347,14 @@ class Database:
                     for another_user,current_rank in current_ranks.items():
                         best_rank_record = best_ranks.get(another_user, None)
                         best_rank = best_rank_record.rank if best_rank_record else None
-                        if best_rank is None or best_rank > current_rank:
+                        if best_rank is None:
+                            best_rank_record = table.UserBestRank(
+                                analytics_id=analytics_id,
+                                username=another_user,
+                                rank=current_rank,
+                            )
+                            session.add(best_rank_record)
+                        elif best_rank > current_rank:
                             best_rank_record.rank = current_rank
 
                     await session.commit()
@@ -355,5 +363,48 @@ class Database:
                     
         except Exception:
             logger.error("[Database] Error while reading analytics", exc_info=True)
+            return False
+        
+    async def get_username(self, group_id: int, user_id: int):
+        try:
+            async with self.AsyncSessionLocal() as session:
+                async with session.begin():
+                    group_user = (await session.execute(
+                        select(table.GroupUser)
+                        .where((table.GroupUser.group_id == group_id) &
+                            (table.GroupUser.user_id == user_id))
+                    )).scalar_one_or_none()
+                    return group_user
+        except Exception:
+            return None
+        
+    async def set_username(self, group_id: int, user_id: int, username: str):
+        try:
+            async with self.AsyncSessionLocal() as session:
+                async with session.begin():
+                    group = await session.get(table.Group, group_id, options=[selectinload(table.Group.users)])
+                    if group is None:
+                        group = table.Group(
+                            id=group_id,
+                            analytics=table.Analytics(),
+                        )
+                        session.add(group)
+                    group_user = (await session.execute(
+                        select(table.GroupUser)
+                        .where((table.GroupUser.group_id == group_id) &
+                            (table.GroupUser.user_id == user_id))
+                    )).scalar_one_or_none()
+                    if group_user is None:
+                        group_user = table.GroupUser(
+                            group_id=group_id,
+                            user_id=user_id,
+                            username=username
+                        )
+                        session.add(group_user)
+                    else:
+                        group_user.username = username
+                    await session.commit()
+                    return True
+        except Exception:
             return False
 

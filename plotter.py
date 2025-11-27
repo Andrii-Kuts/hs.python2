@@ -328,12 +328,18 @@ class PlotterPool:
         path = f"/{hash_group_id(group_id)}/"
         app, server, thread = run(path, group_id)
         return PlotterData(app, server, thread, path)
-    
-    async def get_plotter(self, group_id: int):
+
+    async def get_or_start_plotter(self, group_id: int):
+        plotterData = self.get_plotter_data(group_id)
+        if plotterData is not None:
+            return plotterData
         await self.stop_plotter(group_id)
         plotterData = self.start_plotter(group_id)
         self.plotters[group_id] = plotterData
         return plotterData
+    
+    def get_plotter(self, group_id: int):
+        return self.get_plotter_data(group_id)
     
     async def stop_plotters(self):
         for group_id in self.plotters:

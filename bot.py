@@ -1,16 +1,16 @@
 from datetime import datetime, timezone
+import requests
 import telegram
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Application, filters, MessageHandler
 import os
-from dotenv import load_dotenv
 from classes import DeltaInstance
 from parse_archive import parse_zip
 from database.database import Database
 import uuid
 from analytics import Analytics
 from plotter import PlotterPool
-from asyncio import CancelledError, get_event_loop, sleep, create_task
+from asyncio import get_event_loop
 from logger import logger
 
 class PesunBot:
@@ -97,14 +97,8 @@ class PesunBot:
         await update.message.reply_text(f"Now send the zip archive")
 
     async def handle_analytics(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        response = await update.message.reply_text(f"⏱️  Starting app...")
-        # db = await Database.get_instance()
-        # analytics = await db.read_analytics(update.effective_chat.id)
-        # if analytics is None:
-        #     response = await response.edit_text("❌  Something went wrong while reading analytics. Are you sure you've imported an archive?")
-        #     return
-        # response = await response.edit_text(f"⏱️  Starting dash app...")
-        plotterData = await PlotterPool.get_instance().get_plotter(update.effective_chat.id)
+        response = await update.message.reply_text(f"⏱️  Creating dashboard")
+        plotterData = await PlotterPool.get_instance().get_or_start_plotter(update.effective_chat.id)
         response = await response.edit_text(f"📊  Link to analytics:\n\n{os.getenv("DASH_LINK")}:{os.getenv("DASH_PORT")}{plotterData.path}")
 
     async def handle_append(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -129,6 +123,14 @@ class PesunBot:
         if not result:
             response = await response.edit_text("❌  Something went wrong while appending into database")
             return
+        plotter_data = PlotterPool.get_instance().get_plotter(update.effective_chat.id)
+        if plotter_data is not None:
+            path = plotter_data.path
+            response = await response.edit_text("⏱️  Updating dashboard")
+            post_response = requests.post(f"{os.getenv("DASH_LINK")}:{os.getenv("DASH_PORT")}{path}update")
+            if post_response.status_code != 200:
+                response = await response.edit_text(f"❌  Something went wrong while updating dashboard code = {post_response.status_code}")
+                return
         response = await response.edit_text("✅  Successfuly appended delta into db")
         return
 

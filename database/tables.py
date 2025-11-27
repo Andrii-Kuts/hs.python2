@@ -80,6 +80,15 @@ class UserStreak(Base):
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     days_count: Mapped[int]
 
+class UserBestRank(Base):
+    __tablename__ = "user_best_rank"
+
+    analytics_id: Mapped[int] = mapped_column(ForeignKey("analytics.id", ondelete="CASCADE"), primary_key=True)
+    analytics: Mapped["Analytics"] = relationship(back_populates="user_best_ranks")
+
+    username: Mapped[str] = mapped_column(primary_key=True)
+    rank: Mapped[int]
+
 class Analytics(Base):
     __tablename__ = "analytics"
 
@@ -92,3 +101,4 @@ class Analytics(Base):
     user_delta_history: Mapped[List["UserDeltaHistory"]] = relationship(back_populates="analytics", order_by=UserDeltaHistory.time)
     best_player_history: Mapped[List["BestPlayerHistory"]] = relationship(back_populates="analytics", order_by=BestPlayerHistory.start_time)
     user_streaks: Mapped[List["UserStreak"]] = relationship(back_populates="analytics", order_by=UserStreak.start_time)
+    user_best_ranks: Mapped[List["UserBestRank"]] = relationship(back_populates="analytics")

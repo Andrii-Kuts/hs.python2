@@ -130,6 +130,13 @@ class Database:
                             end_time=streak[1],
                             days_count=streak[2],
                         ) for streak in streaks])
+                    user_best_ranks: list[table.UserBestRank] = []
+                    for user in analytics.get_users():
+                        best_rank = analytics.get_user_best_rank(user)
+                        user_best_ranks.append(table.UserBestRank(
+                            username=user,
+                            rank=best_rank,
+                        ))
                     analytics_db = table.Analytics(
                         group_id=group_id,
                         users=users,
@@ -137,6 +144,7 @@ class Database:
                         user_delta_history=user_delta_history,
                         best_player_history=best_player_history,
                         user_streaks=user_streaks,
+                        user_best_ranks=user_best_ranks,
                     )
                     session.add(analytics_db)
                     await session.commit()
@@ -159,6 +167,7 @@ class Database:
                             selectinload(table.Group.analytics).selectinload(table.Analytics.user_delta_history),
                             selectinload(table.Group.analytics).selectinload(table.Analytics.best_player_history),
                             selectinload(table.Group.analytics).selectinload(table.Analytics.user_streaks),
+                            selectinload(table.Group.analytics).selectinload(table.Analytics.user_best_ranks),
                         )
                         .where(table.Group.id == group_id)
                     )
@@ -187,13 +196,17 @@ class Database:
                         if user not in streaks:
                             streaks[user] = []
                         streaks[user].append((streak.start_time, streak.end_time, streak.days_count))
+                    best_rank: dict[str, int] = {}
+                    for user_best_rank in group.analytics.user_best_ranks:
+                        best_rank[user_best_rank.username] = user_best_rank.rank
 
                     analytics = Analytics(
                         users=users,
                         user_length_histories=user_length_histories,
                         user_deltas=user_deltas,
                         best_players_history=best_players_history,
-                        streaks=streaks
+                        streaks=streaks,
+                        best_rank=best_rank,
                     )
                     return analytics
         except Exception as e:
@@ -316,6 +329,25 @@ class Database:
                     else:
                         current_streak.end_time = delta.timestamp
                         current_streak.days_count += 1
+
+                    # Best Rank
+                    user_lengths = (await session.execute(
+                        select(table.AnalyticsUser.username, last_length_subquery)
+                        .order_by(last_length_subquery.desc())
+                    )).all()
+                    user_lengths = list(map(lambda row: row.tuple(), list(user_lengths)))
+                    current_ranks: dict[str, int] = {}
+                    for i in range(len(user_lengths)):
+                        current_ranks[user_lengths[i][0]] = i+1
+                    best_ranks = (await session.execute(
+                        select(table.UserBestRank)
+                    )).scalars().all()
+                    best_ranks = {row.username: row for row in best_ranks}
+                    for another_user,current_rank in current_ranks.items():
+                        best_rank_record = best_ranks.get(another_user, None)
+                        best_rank = best_rank_record.rank if best_rank_record else None
+                        if best_rank is None or best_rank > current_rank:
+                            best_rank_record.rank = current_rank
 
                     await session.commit()
                     logger.info("[Database] Finished appending event")

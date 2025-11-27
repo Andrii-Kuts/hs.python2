@@ -118,7 +118,7 @@ class PesunBot:
         self.usernames[update.effective_user.username] = update.effective_user.id
         user_id = (update.effective_user.id, update.effective_chat.id)
         if user_id in self.import_users:
-            await self.handle_import_file(self, update, context)
+            await self.handle_import_file(update, context)
             return
         reply = update.message.reply_to_message
         if not reply or reply.chat.id != update.effective_chat.id:
@@ -159,7 +159,7 @@ class PesunBot:
             cnt = 10
             blocks = get_progress_blocks_cnt(percent)
             number = blocks * cnt
-            return str(number) + "%  " + ("🟦" * blocks)
+            return str(number) + "%  " + ("🟦" * blocks) + ("⬛️" * (cnt-blocks))
         response = await response.edit_text(f"⏱️  Parsing {get_progress_text(0)}")
         parsing_progress_cnt = get_progress_blocks_cnt(0)
         dataset = None

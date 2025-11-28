@@ -25,21 +25,3 @@ def notify_app_started():
     ]
     framed_lines = __frame_text(lines, prefix=colors.GREEN)
     print("\n".join(framed_lines))
-
-def request_archive_path():
-    print(f"ℹ️  Please input the path of the archive:")
-    path = input()
-    return path
-
-def archive_parsing():
-    print(f"{colors.BLUE}⏱️  Parsing the archive, this might take a minute...{colors.RESET}")
-
-def notify_unknown_users(users: set[str]):
-    print(f"{colors.YELLOW}⚠️. Note! Found {len(users)} unknown users:")
-    for user in users:
-        print(f"- {user}")
-    print(f"Make sure you've created nicknames.txt file in your archive. Write down unknown users there, " + \
-        f"one for each line:\n\"handle user\"{colors.RESET}")
-
-def archive_parsed():
-    print(f"{colors.GREEN}✅  Archive has been parsed!{colors.RESET}")

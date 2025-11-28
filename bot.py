@@ -4,7 +4,7 @@ import telegram
 from telegram import Chat, Message, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Application, filters, MessageHandler
 import os
-from classes import DeltaInstance
+from dataset import DeltaInstance
 from parse_archive import parse_zip
 from database.database import Database
 import uuid

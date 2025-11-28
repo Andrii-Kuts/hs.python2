@@ -1,5 +1,5 @@
 from logger import logger
-from classes import DeltaInstance, Dataset
+from dataset import DeltaInstance, Dataset
 from pathlib import Path
 from bs4 import BeautifulSoup
 from datetime import datetime

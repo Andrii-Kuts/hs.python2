@@ -1,5 +1,5 @@
 from datetime import datetime
-from classes import DeltaInstance
+from dataset import DeltaInstance
 import re
 
 class ParseMessageResult:

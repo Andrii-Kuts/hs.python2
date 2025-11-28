@@ -5,7 +5,7 @@ from typing import Optional, List
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker, selectinload
 from datetime import datetime
 import os
-from classes import *
+from dataset import *
 from logger import logger
 from analytics import Analytics
 import database.tables as table

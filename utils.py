@@ -1,7 +1,7 @@
 from logger import logger
 from datetime import datetime, timezone, timedelta
 import pytz
-from classes import DeltaInstance
+from dataset import DeltaInstance
 import string
 
 def normalize_date(date: datetime):

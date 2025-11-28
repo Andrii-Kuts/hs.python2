@@ -98,7 +98,7 @@ class UserBestRank(Base):
 
     username: Mapped[str] = mapped_column(primary_key=True)
     rank: Mapped[int]
-
+ 
 class Analytics(Base):
     __tablename__ = "analytics"
 

@@ -4,6 +4,8 @@ This bot will read data of a telegram chat and analyze the **pesun bot**. This i
 
 Author: Andrii Kuts
 
+<b>🖖 Video Link: [link](https://www.youtube.com/watch?v=4U9xrpZEHgo)</b>
+
 ## Features
 
 - Leaderboard of best users
